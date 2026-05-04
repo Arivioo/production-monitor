@@ -42,9 +42,10 @@ for REPO in $REPOS; do
     continue
   fi
 
-  # Format date as "D Mon" (e.g., "4 May")
-  FORMATTED_DATE=$(date -d "$LAST_COMMIT_DATE" '+%-d %b' 2>/dev/null || \
-    date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_COMMIT_DATE" '+%-d %b' 2>/dev/null || echo "")
+  # Format date as "D Mon" (e.g., "4 May") — handle both Z and +00:00 timezone formats
+  CLEAN_DATE=$(echo "$LAST_COMMIT_DATE" | sed 's/+00:00$/Z/' | sed 's/T/ /' | sed 's/Z$//')
+  FORMATTED_DATE=$(date -d "$CLEAN_DATE" '+%-d %b' 2>/dev/null || \
+    date -d "$LAST_COMMIT_DATE" '+%-d %b' 2>/dev/null || echo "")
 
   if [ -z "$FORMATTED_DATE" ]; then
     echo "  Could not parse date for ${REPO}"
