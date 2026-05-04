@@ -33,10 +33,12 @@ test.describe('BackOffice — Production Monitor', () => {
     await expect(messageEl).toBeVisible({ timeout: 15_000 })
     const messageText = await messageEl.textContent()
 
-    // OTP sent = auth pipeline works. Rate limit = infrastructure issue.
-    // Both are useful signals. 500 error = broken.
+    // OTP sent = auth pipeline works. Rate limit = temporary (not broken).
+    // Only fail on actual errors (500, hook failures, etc.)
+    const isOk = messageText?.includes('Code wurde gesendet')
+    const isRateLimited = messageText?.toLowerCase().includes('rate limit')
     expect(
-      messageText?.includes('Code wurde gesendet') || messageText?.includes('Rate limit'),
+      isOk || isRateLimited,
       `Unexpected auth response: ${messageText}`,
     ).toBeTruthy()
   })
