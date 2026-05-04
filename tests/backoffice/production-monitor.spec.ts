@@ -238,4 +238,221 @@ test.describe('BackOffice — Production Monitor', () => {
     await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
     expect(page.url()).toContain('/settings')
   })
+
+  // ──────────────────────────────────────────────
+  // 4. DASHBOARD KPI CARDS
+  // ──────────────────────────────────────────────
+
+  test('dashboard KPI cards visible', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.waitForLoadState('networkidle')
+
+    // Dashboard should show key financial KPI cards
+    const kpiLabels = ['Offene Debitoren', 'Offene Kreditoren', 'Umsatz']
+    for (const label of kpiLabels) {
+      await expect(
+        page.locator(`text=${label}`).first(),
+        `KPI card "${label}" should be visible on dashboard`,
+      ).toBeVisible({ timeout: 15_000 })
+    }
+
+    // Check for overdue indicator (may use different casing/phrasing)
+    const overdueLocator = page.locator('text=/[Üü]berf[äa]llig/i').first()
+    await expect(
+      overdueLocator,
+      'Overdue indicator should be visible on dashboard',
+    ).toBeVisible({ timeout: 10_000 })
+  })
+
+  // ──────────────────────────────────────────────
+  // 5. SIDEBAR NAVIGATION
+  // ──────────────────────────────────────────────
+
+  test('sidebar navigation has key items', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.waitForLoadState('networkidle')
+
+    // Sidebar should contain all primary navigation items
+    const navItems = ['Dashboard', 'Kontakte', 'Projekte', 'Dokumente', 'Rechnungen', 'Buchhaltung']
+    const sidebar = page.locator('nav').first()
+    await expect(sidebar).toBeVisible({ timeout: 10_000 })
+
+    for (const item of navItems) {
+      await expect(
+        sidebar.locator(`text=${item}`).first(),
+        `Sidebar should contain "${item}" nav item`,
+      ).toBeVisible({ timeout: 10_000 })
+    }
+  })
+
+  // ──────────────────────────────────────────────
+  // 6. ACCOUNTING PAGE TABS
+  // ──────────────────────────────────────────────
+
+  test('accounting page has tab navigation', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.goto(`${SITE_URL}/accounting`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
+
+    // Verify tab navigation exists with key accounting tabs
+    const expectedTabs = ['Kontenplan', 'Journal']
+    for (const tab of expectedTabs) {
+      await expect(
+        page.locator(`role=tab >> text=${tab}, text=${tab}`).first().or(
+          page.locator(`[role="tab"]:has-text("${tab}")`).first(),
+        ).or(
+          page.locator(`button:has-text("${tab}"), a:has-text("${tab}")`).first(),
+        ),
+        `Accounting page should have "${tab}" tab`,
+      ).toBeVisible({ timeout: 10_000 })
+    }
+  })
+
+  // ──────────────────────────────────────────────
+  // 7. BILLS PAGE WITH TABLE
+  // ──────────────────────────────────────────────
+
+  test('bills page loads with table', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.goto(`${SITE_URL}/creditors`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
+
+    // Verify table structure is present (table or data grid)
+    const tableLocator = page.locator('table, [role="grid"], [role="table"]').first()
+    await expect(
+      tableLocator,
+      'Bills page should contain a data table',
+    ).toBeVisible({ timeout: 15_000 })
+
+    // Verify table has header row with columns
+    const headerCells = page.locator('th, [role="columnheader"]')
+    const headerCount = await headerCells.count()
+    expect(headerCount, 'Table should have at least one column header').toBeGreaterThan(0)
+  })
+
+  // ──────────────────────────────────────────────
+  // 8. CRM PAGE WITH SEARCH
+  // ──────────────────────────────────────────────
+
+  test('CRM page loads with search', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.goto(`${SITE_URL}/contacts`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
+
+    // Verify search input is present
+    const searchInput = page.locator(
+      'input[type="search"], input[placeholder*="Such"], input[placeholder*="such"], input[placeholder*="Search"], input[placeholder*="Filter"]',
+    ).first()
+    await expect(
+      searchInput,
+      'CRM/Contacts page should have a search input',
+    ).toBeVisible({ timeout: 10_000 })
+  })
+
+  // ──────────────────────────────────────────────
+  // 9. STRIPE DASHBOARD BALANCE
+  // ──────────────────────────────────────────────
+
+  test('Stripe dashboard shows balance section', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.goto(`${SITE_URL}/stripe`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
+
+    // Verify balance section renders (look for CHF amount or balance label)
+    const balanceLocator = page.locator(
+      'text=/CHF|Balance|Saldo|Guthaben|Umsatz/i',
+    ).first()
+    await expect(
+      balanceLocator,
+      'Stripe page should display a balance or revenue section',
+    ).toBeVisible({ timeout: 15_000 })
+  })
+
+  // ──────────────────────────────────────────────
+  // 10. NO CONSOLE ERRORS ON DASHBOARD
+  // ──────────────────────────────────────────────
+
+  test('no critical console errors on dashboard', async ({ page }) => {
+    // Attach console listener BEFORE navigation
+    const errors: string[] = []
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') errors.push(msg.text())
+    })
+
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('text=Dashboard').first()).toBeVisible({ timeout: 10_000 })
+
+    // Give async operations time to settle
+    await page.waitForTimeout(3000)
+
+    // Filter out non-critical noise
+    const criticalErrors = errors.filter(
+      (e) =>
+        !e.includes('favicon') &&
+        !e.includes('manifest') &&
+        !e.includes('third-party') &&
+        !e.includes('net::ERR_') &&
+        !e.includes('ResizeObserver') &&
+        !e.includes('Non-Error promise rejection'),
+    )
+
+    expect(
+      criticalErrors,
+      `Critical console errors on dashboard:\n${criticalErrors.join('\n')}`,
+    ).toHaveLength(0)
+  })
 })
