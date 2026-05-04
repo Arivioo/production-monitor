@@ -1,0 +1,108 @@
+name: Production Monitor
+
+on:
+  schedule:
+    - cron: '*/60 * * * *'  # Every 60 minutes
+  workflow_dispatch: {}      # Manual trigger
+  push:
+    branches: [main]
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run production monitor
+        run: npx playwright test --project=chromium
+        env:
+          # BackOffice
+          BACKOFFICE_URL: https://backoffice.predivo.ch
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
+          BACKOFFICE_ANON_KEY: ${{ secrets.BACKOFFICE_ANON_KEY }}
+          # ScoutCopilot
+          SCOUTCOPILOT_URL: https://scoutcopilot.com
+          SCOUTCOPILOT_SUPABASE_URL: ${{ secrets.SCOUTCOPILOT_SUPABASE_URL }}
+          SCOUTCOPILOT_SERVICE_ROLE_KEY: ${{ secrets.SCOUTCOPILOT_SERVICE_ROLE_KEY }}
+          SCOUTCOPILOT_ANON_KEY: ${{ secrets.SCOUTCOPILOT_ANON_KEY }}
+          # YouTubeMigration
+          YTMIGRATION_URL: https://ytmigration.com
+          YTMIGRATION_SUPABASE_URL: ${{ secrets.YTMIGRATION_SUPABASE_URL }}
+          YTMIGRATION_SERVICE_ROLE_KEY: ${{ secrets.YTMIGRATION_SERVICE_ROLE_KEY }}
+          YTMIGRATION_ANON_KEY: ${{ secrets.YTMIGRATION_ANON_KEY }}
+          # ReplyFlow
+          REPLYFLOW_URL: https://replyflow.predivo.ch
+          REPLYFLOW_SUPABASE_URL: ${{ secrets.REPLYFLOW_SUPABASE_URL }}
+          REPLYFLOW_SERVICE_ROLE_KEY: ${{ secrets.REPLYFLOW_SERVICE_ROLE_KEY }}
+          REPLYFLOW_ANON_KEY: ${{ secrets.REPLYFLOW_ANON_KEY }}
+          # ShipSolo
+          SHIPSOLO_URL: https://distributionos.predivo.ch
+          SHIPSOLO_SUPABASE_URL: ${{ secrets.SHIPSOLO_SUPABASE_URL }}
+          SHIPSOLO_SERVICE_ROLE_KEY: ${{ secrets.SHIPSOLO_SERVICE_ROLE_KEY }}
+          SHIPSOLO_ANON_KEY: ${{ secrets.SHIPSOLO_ANON_KEY }}
+          # BelegPilot
+          BELEGPILOT_URL: https://belegpilot.predivo.ch
+          BELEGPILOT_SUPABASE_URL: ${{ secrets.BELEGPILOT_SUPABASE_URL }}
+          BELEGPILOT_SERVICE_ROLE_KEY: ${{ secrets.BELEGPILOT_SERVICE_ROLE_KEY }}
+          BELEGPILOT_ANON_KEY: ${{ secrets.BELEGPILOT_ANON_KEY }}
+          # Arivioo
+          ARIVIOO_URL: https://arivioo.com
+          ARIVIOO_SUPABASE_URL: ${{ secrets.ARIVIOO_SUPABASE_URL }}
+          ARIVIOO_SERVICE_ROLE_KEY: ${{ secrets.ARIVIOO_SERVICE_ROLE_KEY }}
+          ARIVIOO_ANON_KEY: ${{ secrets.ARIVIOO_ANON_KEY }}
+          # LaunchReady
+          LAUNCHREADY_URL: https://launchready.predivo.ch
+          LAUNCHREADY_SUPABASE_URL: ${{ secrets.LAUNCHREADY_SUPABASE_URL }}
+          LAUNCHREADY_SERVICE_ROLE_KEY: ${{ secrets.LAUNCHREADY_SERVICE_ROLE_KEY }}
+          LAUNCHREADY_ANON_KEY: ${{ secrets.LAUNCHREADY_ANON_KEY }}
+          # SignalScore
+          SIGNALSCORE_URL: https://signalscore.predivo.ch
+          SIGNALSCORE_SUPABASE_URL: ${{ secrets.SIGNALSCORE_SUPABASE_URL }}
+          SIGNALSCORE_SERVICE_ROLE_KEY: ${{ secrets.SIGNALSCORE_SERVICE_ROLE_KEY }}
+          SIGNALSCORE_ANON_KEY: ${{ secrets.SIGNALSCORE_ANON_KEY }}
+          # APIs (predivo.ch)
+          APIS_URL: https://predivo.ch
+          APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}
+          APIS_SERVICE_ROLE_KEY: ${{ secrets.APIS_SERVICE_ROLE_KEY }}
+          APIS_ANON_KEY: ${{ secrets.APIS_ANON_KEY }}
+          # Alert config
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: roger@mueller.ro
+          # Test user
+          TEST_EMAIL: healthcheck-test@predivo.ch
+
+      - name: Send alert on failure
+        if: failure()
+        run: node scripts/send-alert.mjs
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: roger@mueller.ro
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

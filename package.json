@@ -1,0 +1,17 @@
+{
+  "name": "production-monitor",
+  "version": "1.0.0",
+  "description": "Real-world production monitoring for all Predivo projects",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:backoffice": "playwright test tests/backoffice/",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@supabase/supabase-js": "^2.105.2",
+    "nodemailer": "^8.0.7"
+  }
+}
