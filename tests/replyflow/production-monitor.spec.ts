@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
 
-const SITE_URL = process.env.REPLYFLOW_URL || 'https://replyflow.predivo.ch'
+const SITE_URL = process.env.REPLYFLOW_URL || 'https://replyflow.help'
 const SUPABASE_URL = process.env.REPLYFLOW_SUPABASE_URL!
 const SERVICE_ROLE_KEY = process.env.REPLYFLOW_SERVICE_ROLE_KEY!
 const ANON_KEY = process.env.REPLYFLOW_ANON_KEY!

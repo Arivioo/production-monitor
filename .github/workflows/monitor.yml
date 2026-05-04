@@ -44,7 +44,7 @@ jobs:
           YTMIGRATION_SERVICE_ROLE_KEY: ${{ secrets.YTMIGRATION_SERVICE_ROLE_KEY }}
           YTMIGRATION_ANON_KEY: ${{ secrets.YTMIGRATION_ANON_KEY }}
           # ReplyFlow
-          REPLYFLOW_URL: https://replyflow.predivo.ch
+          REPLYFLOW_URL: https://replyflow.help
           REPLYFLOW_SUPABASE_URL: ${{ secrets.REPLYFLOW_SUPABASE_URL }}
           REPLYFLOW_SERVICE_ROLE_KEY: ${{ secrets.REPLYFLOW_SERVICE_ROLE_KEY }}
           REPLYFLOW_ANON_KEY: ${{ secrets.REPLYFLOW_ANON_KEY }}
@@ -69,7 +69,7 @@ jobs:
           LAUNCHREADY_SERVICE_ROLE_KEY: ${{ secrets.LAUNCHREADY_SERVICE_ROLE_KEY }}
           LAUNCHREADY_ANON_KEY: ${{ secrets.LAUNCHREADY_ANON_KEY }}
           # SignalScore
-          SIGNALSCORE_URL: https://signalscore.predivo.ch
+          SIGNALSCORE_URL: https://signalscore.ch
           SIGNALSCORE_SUPABASE_URL: ${{ secrets.SIGNALSCORE_SUPABASE_URL }}
           SIGNALSCORE_SERVICE_ROLE_KEY: ${{ secrets.SIGNALSCORE_SERVICE_ROLE_KEY }}
           SIGNALSCORE_ANON_KEY: ${{ secrets.SIGNALSCORE_ANON_KEY }}
