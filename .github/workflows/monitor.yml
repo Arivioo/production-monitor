@@ -5,7 +5,7 @@ on:
     - cron: '*/60 * * * *'  # Every 60 minutes
   workflow_dispatch: {}      # Manual trigger
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   monitor:
