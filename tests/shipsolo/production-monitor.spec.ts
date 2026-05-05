@@ -24,23 +24,17 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
 
 /**
  * Navigate to target URL with PasswordGate bypassed.
- * Sets sessionStorage key via page context, then navigates.
- * If gate still shows, force-sets key and reloads.
+ * After loginViaMagicLink, the page should be on the ShipSolo origin.
+ * If not (e.g., stuck on about:blank), navigate to origin first.
  */
 async function gotoWithGateBypass(page: import('@playwright/test').Page, url: string): Promise<void> {
-  // First, ensure we're on the correct origin to set sessionStorage
-  const currentUrl = page.url()
-  if (!currentUrl.includes('distributionos.predivo.ch')) {
+  // Ensure we're on the correct origin for sessionStorage
+  if (!page.url().includes('distributionos.predivo.ch')) {
     await page.goto(SITE_URL, { waitUntil: 'commit' })
   }
   await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
+  // Navigate to target — full page load reads sessionStorage in PasswordGate useState initializer
   await page.goto(url, { waitUntil: 'networkidle' })
-  // If gate still intercepts (React rendered before sessionStorage was set), reload
-  const gateInput = page.locator('input[placeholder="Access code"]')
-  if (await gateInput.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
-    await page.reload({ waitUntil: 'networkidle' })
-  }
 }
 
 test.describe('ShipSolo — Production Monitor', () => {
