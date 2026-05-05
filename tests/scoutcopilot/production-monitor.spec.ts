@@ -100,6 +100,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   // ─── Real User Interaction Tests ──────────────────────────────
 
   test('player search flow: enter query and verify results table loads', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/search`, { waitUntil: 'networkidle' })
 
@@ -138,6 +139,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   })
 
   test('player detail view: search then click first result to view profile', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/search`, { waitUntil: 'networkidle' })
 
@@ -198,6 +200,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   })
 
   test('dashboard interaction: metric cards and quick actions are present', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
 
@@ -244,6 +247,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   })
 
   test('settings interaction: settings tabs and profile form load', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
 
@@ -291,6 +295,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   })
 
   test('search filters: position filter changes and UI reflects the update', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/search`, { waitUntil: 'networkidle' })
 

@@ -226,7 +226,7 @@ test.describe('BelegPilot — Production Monitor', () => {
 
     // Switch to ERP tab — table with ERP systems appears
     await page.locator('[role="tab"]:has-text("ERP-Exportformate")').click()
-    await expect(page.locator('text=ERP-SYSTEM')).toBeVisible({ timeout: 5_000 })
+    await expect(page.locator('text=ERP-SYSTEM').first()).toBeVisible({ timeout: 5_000 })
   })
 
   test('navigation: sidebar links load correct pages', async ({ page }) => {

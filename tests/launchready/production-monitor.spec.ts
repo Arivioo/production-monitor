@@ -105,6 +105,7 @@ test.describe('LaunchReady — Production Monitor', () => {
   })
 
   test('dashboard shows audit history or empty-state prompt after login', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('launchready-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
     // Wait for the dashboard to finish loading (loading spinner disappears)
@@ -121,6 +122,7 @@ test.describe('LaunchReady — Production Monitor', () => {
   })
 
   test('dashboard audit cards have scores and dates when audits exist', async ({ page }) => {
+    await page.addInitScript(() => { try { sessionStorage.setItem('launchready-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
     // Wait for loading spinner to disappear before reading dashboard state
