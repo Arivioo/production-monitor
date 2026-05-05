@@ -24,13 +24,20 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
 
 /**
  * Dismiss the PasswordGate if it appears by entering the access code.
+ * The gate is a fixed overlay div with z-60 that intercepts all pointer events.
  */
 async function dismissGateIfVisible(page: import('@playwright/test').Page): Promise<void> {
+  const gateOverlay = page.locator('.fixed.inset-0')
   const gateInput = page.locator('input[placeholder="Access code"]')
-  if (await gateInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
+  // Wait up to 5s for either the gate to appear or the page to be interactive
+  const gateShowing = await gateInput.isVisible({ timeout: 5_000 }).catch(() => false)
+  if (gateShowing) {
     await gateInput.fill('predivo2026')
     await page.locator('button[type="submit"]').click()
-    await gateInput.waitFor({ state: 'hidden', timeout: 5_000 })
+    // Wait for the overlay to disappear
+    await gateOverlay.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {})
+    // Small delay for React re-render
+    await page.waitForTimeout(500)
   }
 }
 
