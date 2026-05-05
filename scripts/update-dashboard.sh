@@ -202,6 +202,9 @@ if [ -n "${FTP_HOST:-}" ] && [ -n "${FTP_USER:-}" ] && [ -n "${FTP_PASS:-}" ]; t
   echo "$CHANGELOG" | jq '.' > /tmp/changelog.json
   curl -s -T /tmp/data.json "ftp://${FTP_USER}:${FTP_PASS}@${FTP_HOST}/projects.predivo.ch/data.json"
   curl -s -T /tmp/changelog.json "ftp://${FTP_USER}:${FTP_PASS}@${FTP_HOST}/projects.predivo.ch/changelog.json"
+  # Also deploy to backoffice.predivo.ch so the integrated page can fetch same-origin (no CORS)
+  curl -s -T /tmp/data.json "ftp://${FTP_USER}:${FTP_PASS}@${FTP_HOST}/backoffice.predivo.ch/project-data.json"
+  curl -s -T /tmp/changelog.json "ftp://${FTP_USER}:${FTP_PASS}@${FTP_HOST}/backoffice.predivo.ch/project-changelog.json"
   echo "FTP upload complete."
   rm -f /tmp/data.json /tmp/changelog.json
 fi
