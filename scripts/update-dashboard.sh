@@ -72,17 +72,40 @@ for REPO in $REPOS; do
     echo "  ${REPO}: ${CURRENT_COMMITS} -> ${COMMIT_COUNT} commits (+${NEW_COMMITS}), last active: ${FORMATTED_DATE}"
     CHANGES=$((CHANGES + 1))
 
-    # Fetch recent commit messages (up to 10 or the delta, whichever is smaller)
+    # Fetch recent commits with full detail (up to 10 or the delta, whichever is smaller)
     FETCH_COUNT=10
     if [ "$NEW_COMMITS" -gt 0 ] && [ "$NEW_COMMITS" -lt 10 ]; then
       FETCH_COUNT=$NEW_COMMITS
     fi
 
-    MESSAGES=$(gh api "repos/${OWNER}/${REPO}/commits?sha=${BRANCH}&per_page=${FETCH_COUNT}" \
-      --jq '[.[] | .commit.message | split("\n")[0] | if length > 80 then .[:77] + "..." else . end]' \
-      2>/dev/null || echo "[]")
+    # Fetch detailed commit data: subject, body, files changed, additions, deletions
+    COMMIT_DETAILS=$(gh api "repos/${OWNER}/${REPO}/commits?sha=${BRANCH}&per_page=${FETCH_COUNT}" \
+      --jq '[.[] | {
+        subject: (.commit.message | split("\n")[0] | if length > 100 then .[:97] + "..." else . end),
+        body: (.commit.message | split("\n")[2:] | map(select(. != "" and (startswith("Co-Authored") | not))) | join(" ") | if length > 200 then .[:197] + "..." else . end),
+        sha: .sha[0:7]
+      }]' 2>/dev/null || echo "[]")
 
-    # Add to changelog changes
+    # Fetch file stats for the most recent commits (additions/deletions)
+    TOTAL_ADDITIONS=0
+    TOTAL_DELETIONS=0
+    TOTAL_FILES=0
+    for SHA in $(echo "$COMMIT_DETAILS" | jq -r '.[].sha' | head -5); do
+      STATS=$(gh api "repos/${OWNER}/${REPO}/commits/${SHA}" \
+        --jq '{files: (.files | length), additions: .stats.additions, deletions: .stats.deletions}' \
+        2>/dev/null || echo '{"files":0,"additions":0,"deletions":0}')
+      TOTAL_FILES=$((TOTAL_FILES + $(echo "$STATS" | jq '.files')))
+      TOTAL_ADDITIONS=$((TOTAL_ADDITIONS + $(echo "$STATS" | jq '.additions')))
+      TOTAL_DELETIONS=$((TOTAL_DELETIONS + $(echo "$STATS" | jq '.deletions')))
+    done
+
+    # Build messages array (subject lines for backward compat)
+    MESSAGES=$(echo "$COMMIT_DETAILS" | jq '[.[].subject]')
+
+    # Build detailed commits array
+    DETAILS=$(echo "$COMMIT_DETAILS" | jq '[.[] | {subject, body}]')
+
+    # Add to changelog changes with rich data
     CHANGELOG_CHANGES=$(echo "$CHANGELOG_CHANGES" | jq \
       --arg name "$PROJ_NAME" \
       --arg repo "$REPO" \
@@ -90,7 +113,11 @@ for REPO in $REPOS; do
       --argjson after "$COMMIT_COUNT" \
       --argjson delta "$NEW_COMMITS" \
       --argjson msgs "$MESSAGES" \
-      '. + [{name: $name, repo: $repo, before: $before, after: $after, delta: $delta, messages: $msgs}]')
+      --argjson details "$DETAILS" \
+      --argjson files "$TOTAL_FILES" \
+      --argjson additions "$TOTAL_ADDITIONS" \
+      --argjson deletions "$TOTAL_DELETIONS" \
+      '. + [{name: $name, repo: $repo, before: $before, after: $after, delta: $delta, messages: $msgs, details: $details, filesChanged: $files, additions: $additions, deletions: $deletions}]')
   else
     echo "  ${REPO}: ${CURRENT_COMMITS} commits (unchanged), last active: ${FORMATTED_DATE}"
   fi
