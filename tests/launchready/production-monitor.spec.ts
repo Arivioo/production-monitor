@@ -17,9 +17,12 @@ const AUTH_CONFIG = {
 
 /** Bypass the PasswordGate by setting sessionStorage before navigation. */
 async function bypassPasswordGate(page: import('@playwright/test').Page, url: string): Promise<void> {
-  await page.goto(SITE_URL, { waitUntil: 'commit' })
+  // Use domcontentloaded so the page JS context is available for sessionStorage
+  await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' })
   await page.evaluate(() => sessionStorage.setItem('launchready-unlocked', 'true'))
   await page.goto(url, { waitUntil: 'networkidle' })
+  // Wait for the PasswordGate to hydrate and reveal the page content (main or section)
+  await page.locator('main, section').first().waitFor({ state: 'visible', timeout: 15_000 })
 }
 
 test.describe('LaunchReady — Production Monitor', () => {
@@ -104,12 +107,14 @@ test.describe('LaunchReady — Production Monitor', () => {
   test('dashboard shows audit history or empty-state prompt after login', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
+    // Wait for the dashboard to finish loading (loading spinner disappears)
+    await page.locator('[role="status"]').waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {})
     // Dashboard renders "My Audits" heading for authenticated users
     const auditsHeading = page.locator('h2', { hasText: 'My Audits' })
-    await expect(auditsHeading).toBeVisible({ timeout: 10_000 })
-    // Either audit cards or the empty-state prompt must be present
+    await expect(auditsHeading).toBeVisible({ timeout: 15_000 })
+    // Either audit cards (.space-y-3 > div) or the empty-state prompt must be present
     const auditCards = page.locator('.space-y-3 > div')
-    const emptyPrompt = page.locator('text=No audits yet')
+    const emptyPrompt = page.locator('p', { hasText: 'No audits yet' })
     const hasCards = await auditCards.count() > 0
     const hasEmpty = await emptyPrompt.isVisible().catch(() => false)
     expect(hasCards || hasEmpty).toBe(true)
@@ -118,15 +123,19 @@ test.describe('LaunchReady — Production Monitor', () => {
   test('dashboard audit cards have scores and dates when audits exist', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
-    await page.locator('h2', { hasText: 'My Audits' }).waitFor({ timeout: 10_000 })
+    // Wait for loading spinner to disappear before reading dashboard state
+    await page.locator('[role="status"]').waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {})
+    await page.locator('h2', { hasText: 'My Audits' }).waitFor({ timeout: 15_000 })
     const auditCards = page.locator('.space-y-3 > div')
     const count = await auditCards.count()
     if (count > 0) {
       const firstCard = auditCards.first()
-      // Each AuditCard shows a numeric score out of 100
-      const scoreText = firstCard.locator('text=/\\d+/')
-      await expect(scoreText.first()).toBeVisible()
-      // Each AuditCard shows a date via Clock icon row (contains a month abbreviation)
+      // Each AuditCard shows a numeric score in a <span> with bold styling
+      const scoreSpan = firstCard.locator('span.text-2xl')
+      await expect(scoreSpan).toBeVisible()
+      const scoreVal = await scoreSpan.textContent()
+      expect(Number(scoreVal)).toBeGreaterThanOrEqual(0)
+      // Each AuditCard shows a date (month abbreviation from toLocaleDateString)
       const cardText = await firstCard.textContent()
       expect(cardText).toMatch(/Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/)
     }
@@ -140,48 +149,50 @@ test.describe('LaunchReady — Production Monitor', () => {
     await bypassPasswordGate(page, SITE_URL)
     // Hero section — badge text is always present
     await expect(page.locator('text=Free audit — no signup required')).toBeVisible({ timeout: 10_000 })
-    // Feature pill list below the form
-    await expect(page.locator('text=Meta tags')).toBeVisible()
-    await expect(page.locator('text=Sitemap & robots.txt')).toBeVisible()
-    // "How it works" section
-    const howSection = page.locator('#how-it-works')
-    await expect(howSection).toBeVisible()
+    // Feature pill list below the form (spans rendered with exact text)
+    await expect(page.locator('span', { hasText: 'Meta tags' }).first()).toBeVisible()
+    await expect(page.locator('span', { hasText: 'Sitemap' }).first()).toBeVisible()
+    // "How it works" section — id is on a <div> wrapper around the HowItWorks <section>
+    await expect(page.locator('#how-it-works')).toBeAttached()
     await expect(page.locator('h2', { hasText: 'How it works' })).toBeVisible()
     // Four step cards rendered inside HowItWorks
     const steps = page.locator('h3')
+    await steps.first().waitFor({ state: 'visible', timeout: 10_000 })
     const stepTitles = await steps.allTextContents()
     expect(stepTitles).toContain('Paste your URL')
     expect(stepTitles).toContain('Get copy-paste fixes')
     // Comparison section
     await expect(page.locator('h2', { hasText: 'Why not just use Lighthouse' })).toBeVisible()
-    // Comparison table header column
+    // Comparison table — LaunchReady column header
     await expect(page.locator('th', { hasText: 'LaunchReady' })).toBeVisible()
   })
 
   test('privacy page has substantial paragraph content', async ({ page }) => {
     await bypassPasswordGate(page, `${SITE_URL}/privacy`)
     await expect(page.locator('h1', { hasText: 'Privacy Policy' })).toBeVisible({ timeout: 10_000 })
-    // Must have multiple headings (11 sections in source)
-    const h2s = page.locator('h2')
+    // Must have multiple headings — scoped to main content section (11 in source)
+    const contentSection = page.locator('section').first()
+    const h2s = contentSection.locator('h2')
     await expect(h2s).toHaveCount(11)
-    // Must contain substantive prose — check a unique phrase from the source
-    await expect(page.locator('text=Predivo GmbH')).toBeVisible()
-    await expect(page.locator('text=Küssnacht am Rigi')).toBeVisible()
+    // Must contain substantive prose — check unique phrases from the source
+    await expect(page.locator('text=Predivo GmbH').first()).toBeVisible()
+    await expect(page.locator('text=Küssnacht am Rigi').first()).toBeVisible()
     // Body text must exceed 500 characters of meaningful content
-    const bodyText = await page.locator('section').textContent()
+    const bodyText = await contentSection.textContent()
     expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(500)
   })
 
   test('terms page has substantial paragraph content', async ({ page }) => {
     await bypassPasswordGate(page, `${SITE_URL}/terms`)
     await expect(page.locator('h1', { hasText: 'Terms of Service' })).toBeVisible({ timeout: 10_000 })
-    // Must have multiple headings (12 sections in source)
-    const h2s = page.locator('h2')
+    // Must have multiple headings — scoped to main content section (12 in source)
+    const contentSection = page.locator('section').first()
+    const h2s = contentSection.locator('h2')
     await expect(h2s).toHaveCount(12)
     // Key legal terms from the source must be present
-    await expect(page.locator('text=Predivo GmbH')).toBeVisible()
-    await expect(page.locator('text=CHE-374.611.592')).toBeVisible()
-    const bodyText = await page.locator('section').textContent()
+    await expect(page.locator('text=Predivo GmbH').first()).toBeVisible()
+    await expect(page.locator('text=CHE-374.611.592').first()).toBeVisible()
+    const bodyText = await contentSection.textContent()
     expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(500)
   })
 
@@ -189,14 +200,15 @@ test.describe('LaunchReady — Production Monitor', () => {
     await bypassPasswordGate(page, `${SITE_URL}/impressum`)
     await expect(page.locator('h1', { hasText: 'Impressum' })).toBeVisible({ timeout: 10_000 })
     // Company name, address, UID must all be present
-    await expect(page.locator('text=Predivo GmbH')).toBeVisible()
-    await expect(page.locator('text=Bahnhofstrasse 55')).toBeVisible()
-    await expect(page.locator('text=CHE-374.611.592')).toBeVisible()
-    await expect(page.locator('text=Roger Müller')).toBeVisible()
-    // Sections present
+    await expect(page.locator('text=Predivo GmbH').first()).toBeVisible()
+    await expect(page.locator('text=Bahnhofstrasse 55').first()).toBeVisible()
+    await expect(page.locator('text=CHE-374.611.592').first()).toBeVisible()
+    await expect(page.locator('text=Roger Müller').first()).toBeVisible()
+    // Key section headings present (from <h2> elements in the page source)
     await expect(page.locator('h2', { hasText: 'Authorized Representative' })).toBeVisible()
     await expect(page.locator('h2', { hasText: 'Commercial Register' })).toBeVisible()
-    const bodyText = await page.locator('section').textContent()
+    const contentSection = page.locator('section').first()
+    const bodyText = await contentSection.textContent()
     expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(200)
   })
 })

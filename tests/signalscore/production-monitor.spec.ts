@@ -18,6 +18,27 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
   await page.goto(url, { waitUntil: 'networkidle' })
 }
 
+/**
+ * Login via magic link AND bypass the PasswordGate.
+ *
+ * The magic link flow navigates through supabase.co then redirects back to the
+ * site — this creates a fresh page context where sessionStorage is empty, so
+ * the PasswordGate would block the app. We pre-register an initScript so the
+ * key is injected on every document (including the redirect target), then
+ * perform the magic-link login as normal.
+ */
+async function loginWithGateBypass(
+  page: import('@playwright/test').Page,
+  config: { supabaseUrl: string; serviceRoleKey: string; anonKey: string; testEmail: string; siteUrl: string },
+): Promise<void> {
+  // addInitScript runs before any script on every subsequent navigation,
+  // ensuring the PasswordGate state is 'true' from the very first render.
+  await page.addInitScript(() => {
+    try { sessionStorage.setItem('signalscore-unlocked', 'true') } catch { /* ignore */ }
+  })
+  await loginViaMagicLink(page, config)
+}
+
 test.describe('SignalScore — Production Monitor', () => {
   test.beforeAll(async () => {
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
@@ -143,7 +164,7 @@ test.describe('SignalScore — Production Monitor', () => {
   // ── Interaction tests ──
 
   test('company search flow: search input accepts text and shows results or empty state', async ({ page }) => {
-    await loginViaMagicLink(page, {
+    await loginWithGateBypass(page, {
       supabaseUrl: SUPABASE_URL,
       serviceRoleKey: SERVICE_ROLE_KEY,
       anonKey: ANON_KEY,
@@ -187,7 +208,7 @@ test.describe('SignalScore — Production Monitor', () => {
   })
 
   test('check history: page structure, search input, and status filters render', async ({ page }) => {
-    await loginViaMagicLink(page, {
+    await loginWithGateBypass(page, {
       supabaseUrl: SUPABASE_URL,
       serviceRoleKey: SERVICE_ROLE_KEY,
       anonKey: ANON_KEY,
@@ -235,7 +256,7 @@ test.describe('SignalScore — Production Monitor', () => {
   })
 
   test('dashboard data: heading, search card, and recent checks section all render', async ({ page }) => {
-    await loginViaMagicLink(page, {
+    await loginWithGateBypass(page, {
       supabaseUrl: SUPABASE_URL,
       serviceRoleKey: SERVICE_ROLE_KEY,
       anonKey: ANON_KEY,
@@ -261,8 +282,8 @@ test.describe('SignalScore — Production Monitor', () => {
 
     // If there are recent checks, the score badge or status badge is visible
     if (hasChecks) {
-      // RecentCheckRow renders a Badge with score grade · score or status label
-      const badges = page.locator('[class*="badge"], .badge')
+      // RecentCheckRow renders shadcn Badge elements (data-slot="badge")
+      const badges = page.locator('[data-slot="badge"]')
       const badgeCount = await badges.count()
       expect(badgeCount).toBeGreaterThan(0)
     }
@@ -272,7 +293,7 @@ test.describe('SignalScore — Production Monitor', () => {
   })
 
   test('settings interaction: account email displays, nav tabs render, billing plan section visible', async ({ page }) => {
-    await loginViaMagicLink(page, {
+    await loginWithGateBypass(page, {
       supabaseUrl: SUPABASE_URL,
       serviceRoleKey: SERVICE_ROLE_KEY,
       anonKey: ANON_KEY,
@@ -332,7 +353,8 @@ test.describe('SignalScore — Production Monitor', () => {
     await expect(page.locator('h2:has-text("How It Works")')).toBeVisible({ timeout: 5_000 })
     await expect(page.locator('h3:has-text("Collect")')).toBeVisible({ timeout: 5_000 })
     await expect(page.locator('h3:has-text("Analyze")')).toBeVisible({ timeout: 5_000 })
-    await expect(page.locator('h3:has-text("Score")')).toBeVisible({ timeout: 5_000 })
+    // Use .first() because h3:has-text("Score") also matches "Altman Omega Score" in the academic refs section
+    await expect(page.locator('h3:has-text("Score")').first()).toBeVisible({ timeout: 5_000 })
 
     // Section 02 — "The 7 Scoring Dimensions" and the weight distribution bar
     await expect(page.locator('h2:has-text("The 7 Scoring Dimensions")')).toBeVisible({ timeout: 5_000 })

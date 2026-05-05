@@ -22,6 +22,18 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
   await page.goto(url, { waitUntil: 'networkidle' })
 }
 
+/**
+ * After loginViaMagicLink the user lands at siteUrl with the PasswordGate
+ * still blocking (fresh sessionStorage per Playwright page).
+ * Call this after loginViaMagicLink to inject the bypass key and navigate
+ * to the desired authenticated route.
+ */
+async function bypassGateAfterLogin(page: import('@playwright/test').Page, url: string): Promise<void> {
+  // Inject bypass key into the current origin's sessionStorage, then navigate
+  await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
+  await page.goto(url, { waitUntil: 'networkidle' })
+}
+
 test.describe('ShipSolo — Production Monitor', () => {
   test.beforeAll(async () => {
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
@@ -88,115 +100,134 @@ test.describe('ShipSolo — Production Monitor', () => {
 
   test('products CRUD: add product, verify in list, delete via settings', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
+    // Bypass PasswordGate (fresh sessionStorage after magic link redirect)
+    await bypassGateAfterLogin(page, `${SITE_URL}/products`)
 
-    // Open add product modal
+    // Open add product modal — button text is exactly '+ Add Product'
     const addBtn = page.locator('button', { hasText: '+ Add Product' }).first()
     await expect(addBtn).toBeVisible({ timeout: 10_000 })
     await addBtn.click()
 
-    // Wait for modal to appear
+    // Wait for modal to appear — AddProductModal renders role="dialog" aria-modal="true"
     const modal = page.locator('[role="dialog"][aria-modal="true"]')
     await expect(modal).toBeVisible({ timeout: 5_000 })
 
-    // Fill in product name — the modal auto-focuses the first input
+    // Fill in product name — first input inside the form is the Name field
     const nameInput = modal.locator('input').first()
     await nameInput.fill('Test Product CI')
 
-    // Fill description
+    // Fill description — second input is Description
     const descInput = modal.locator('input').nth(1)
     await descInput.fill('Automated test product — safe to delete')
 
-    // Submit the form
+    // Submit the form — button type="submit" with text '+ Add Product'
     const submitBtn = modal.locator('button[type="submit"]')
     await expect(submitBtn).toBeEnabled({ timeout: 3_000 })
     await submitBtn.click()
 
-    // Modal should close
+    // Modal should close after submit
     await expect(modal).not.toBeVisible({ timeout: 5_000 })
 
-    // Verify new product card appears in the list
+    // Verify new product card appears — ProductsList uses h3 for product name
     const productCard = page.locator('h3', { hasText: 'Test Product CI' })
     await expect(productCard).toBeVisible({ timeout: 10_000 })
 
-    // Delete the product via Settings > Products tab to avoid leaving test data
+    // Delete via Settings > Products tab (default active tab)
     await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
 
-    // Settings defaults to Products tab — find the delete button for our product
-    const deleteBtn = page.locator('[aria-label*="delete" i], button[title*="delete" i], button svg.lucide-trash-2').first()
-    // Fall back: find Trash2 button near our product name
+    // Confirm the product row is visible in the Products tab
     const productRow = page.locator('text=Test Product CI').first()
     await expect(productRow).toBeVisible({ timeout: 10_000 })
 
-    // Accept the confirm() dialog that fires on delete
+    // Accept the browser confirm() dialog that fires on delete
     page.on('dialog', dialog => dialog.accept())
 
-    // Click the trash icon button in the same card as our product
+    // Find the card containing our product name and click its Trash2 button.
+    // ProductsTab renders cards as: div.space-y-4 > div (one per product).
+    // Each card has two buttons: Edit (first) and Trash2 (last).
     const trashBtn = page
-      .locator('.space-y-4 > *')
+      .locator('.space-y-4 > div')
       .filter({ hasText: 'Test Product CI' })
       .locator('button')
       .last()
     await trashBtn.click()
 
-    // Verify product is no longer in the list
+    // Verify product is no longer shown
     await expect(page.locator('text=Test Product CI')).not.toBeVisible({ timeout: 5_000 })
   })
 
   test('dashboard data: shows command center heading and score badge', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
+    // Bypass PasswordGate before navigating to dashboard
+    await bypassGateAfterLogin(page, `${SITE_URL}/dashboard`)
 
-    // The dashboard either shows Command Center (normal) or FirstMission/SetupSprint (onboarding)
+    // The dashboard shows one of:
+    //   - Command Center (user has products + onboarding complete)
+    //     h1 text: "Week {N} Command Center"
+    //   - FirstMission (no products, first time)
+    //     h1 text: "Welcome to ShipSolo"
+    //   - SetupSprint (has products, setup not done)
+    //     stepbar with labels like "Knowledge Base", "AI Config"
     const body = page.locator('body')
     await expect(body).not.toBeEmpty()
 
-    // Check for known dashboard content patterns
-    const hasCommandCenter = await page.locator('h1', { hasText: /Command Center/i }).isVisible().catch(() => false)
-    const hasFirstMission = await page.locator('h1, h2', { hasText: /mission|setup|welcome|get started/i }).isVisible().catch(() => false)
+    // Command Center: h1 contains "Command Center" (full text is "Week N Command Center")
+    const hasCommandCenter = await page.locator('h1').filter({ hasText: /Command Center/i }).isVisible().catch(() => false)
 
-    expect(hasCommandCenter || hasFirstMission).toBe(true)
+    // FirstMission welcome screen: h1 = "Welcome to ShipSolo"
+    const hasWelcome = await page.locator('h1').filter({ hasText: /Welcome to/i }).isVisible().catch(() => false)
+
+    // SetupSprint: shows step labels in the sidebar stepper
+    const hasSetupSprint = await page.locator('text=/Knowledge Base|AI Config|First Run/i').first().isVisible().catch(() => false)
+
+    expect(hasCommandCenter || hasWelcome || hasSetupSprint).toBe(true)
 
     if (hasCommandCenter) {
-      // Verify score badge is present with numeric content
-      const scoreBadge = page.locator('text=/Weekly Score/i').first()
+      // Score badge: div containing "Weekly Score" text (rendered in a div below the score number)
+      // Source: <div class="text-[10px] ... uppercase ...">Weekly Score</div>
+      const scoreBadge = page.locator('div', { hasText: /^Weekly Score$/i }).first()
       await expect(scoreBadge).toBeVisible({ timeout: 5_000 })
 
-      // Verify overall progress section or engine metric cards are rendered
-      const hasProgress = await page.locator('text=/Overall Progress|Engine/i').first().isVisible().catch(() => false)
-      const hasEmptyState = await page.locator('text=/You\'re all set|no products|add a product/i').first().isVisible().catch(() => false)
-      expect(hasProgress || hasEmptyState).toBe(true)
+      // Either overall progress bar is shown (when tasks exist) OR the "You're all set" panel
+      // Source: Dashboard.tsx line 110: "You're all set! Here's what to do first:"
+      // Source: Dashboard.tsx line 270: "Overall Progress"
+      const hasProgress = await page.locator('text=/Overall Progress/i').first().isVisible().catch(() => false)
+      const hasAllSet = await page.locator('text=/You\'re all set/i').first().isVisible().catch(() => false)
+      expect(hasProgress || hasAllSet).toBe(true)
     }
   })
 
   test('product detail: click product card and verify detail view loads', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
+    // Bypass PasswordGate before navigating to products list
+    await bypassGateAfterLogin(page, `${SITE_URL}/products`)
 
-    // Check if any product cards exist
+    // ProductsList renders product cards as <Link to="/products/:id"> (renders as <a href="/products/:id">)
     const productLinks = page.locator('a[href^="/products/"]')
     const count = await productLinks.count()
 
     if (count === 0) {
-      // No products — verify the empty state or add button is present instead
+      // No products in this session's localStorage — verify the "+ Add Product" button is present
+      // (both ProductsList header and empty-state have this button)
       const addBtn = page.locator('button', { hasText: '+ Add Product' }).first()
       await expect(addBtn).toBeVisible({ timeout: 5_000 })
       return
     }
 
-    // Click the first product card
+    // Click the first product card link
     await productLinks.first().click()
     await page.waitForLoadState('networkidle')
 
-    // Verify URL changed to /products/:id
+    // URL must change to /products/:uuid
     expect(page.url()).toMatch(/\/products\/[^/]+$/)
 
-    // Verify detail view elements: breadcrumb back link and product name heading
-    const backLink = page.locator('a[href="/products"], a[href*="products"]').first()
+    // ProductView breadcrumb: <Link to="/products">Products</Link>
+    // Renders as <a href="/products">Products</a>
+    const backLink = page.locator('a[href="/products"]').first()
     await expect(backLink).toBeVisible({ timeout: 10_000 })
 
-    // Verify the page has product info (name in an h1 or h2)
-    const heading = page.locator('h1, h2').first()
+    // Product name is rendered as h1 in ProductView
+    const heading = page.locator('h1').first()
     await expect(heading).toBeVisible({ timeout: 5_000 })
     const headingText = await heading.textContent()
     expect((headingText || '').trim().length).toBeGreaterThan(0)
@@ -204,61 +235,69 @@ test.describe('ShipSolo — Production Monitor', () => {
 
   test('settings interaction: tabs work, AI config BYOK field exists, subscription tier displayed', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
+    // Bypass PasswordGate before navigating to settings
+    await bypassGateAfterLogin(page, `${SITE_URL}/settings`)
 
-    // Verify the Settings heading
-    const heading = page.locator('h1', { hasText: /Settings/i })
+    // Settings.tsx renders: <h1>Settings</h1>
+    const heading = page.locator('h1', { hasText: /^Settings$/i })
     await expect(heading).toBeVisible({ timeout: 10_000 })
 
-    // Verify the tab bar is present
+    // Tab bar: <div role="tablist" aria-label="Settings sections">
     const tabList = page.locator('[role="tablist"]')
     await expect(tabList).toBeVisible({ timeout: 5_000 })
 
-    // Navigate to the AI Configuration tab
-    const aiTab = page.locator('[role="tab"]', { hasText: /AI Configuration/i })
+    // AI Configuration tab: TABS array has label 'AI Configuration'
+    // Rendered as <button role="tab">AI Configuration</button>
+    const aiTab = tabList.locator('[role="tab"]', { hasText: /^AI Configuration$/i })
     await expect(aiTab).toBeVisible({ timeout: 5_000 })
     await aiTab.click()
 
-    // Verify BYOK (API key) input field is present
+    // AIConfigTab renders: <input type="password" placeholder="sk-ant-...">
+    // Selector matches on placeholder prefix "sk-ant"
     const apiKeyInput = page.locator('input[placeholder*="sk-ant"]')
     await expect(apiKeyInput).toBeVisible({ timeout: 5_000 })
 
-    // Navigate to General tab to verify subscription-related content
-    const generalTab = page.locator('[role="tab"]', { hasText: /General/i })
+    // General tab: TABS array has label 'General'
+    const generalTab = tabList.locator('[role="tab"]', { hasText: /^General$/i })
     await expect(generalTab).toBeVisible()
     await generalTab.click()
 
-    // General tab should render without error (dark mode toggle is a reliable landmark)
-    const generalContent = page.locator('[role="tabpanel"]').last()
+    // GeneralTab is rendered inside: <div role="tabpanel" id="settings-tabpanel-general">
+    // Only one tabpanel is in the DOM at a time (conditional rendering)
+    const generalContent = page.locator('[role="tabpanel"]')
     await expect(generalContent).toBeVisible({ timeout: 5_000 })
     const generalText = await generalContent.textContent()
+    // GeneralTab always has "Appearance", "Dark Mode", "Data Management" etc.
     expect((generalText || '').length).toBeGreaterThan(20)
   })
 
   test('navigation completeness: all sidebar nav items present and navigable without errors', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
+    // Bypass PasswordGate, then navigate to dashboard
+    await bypassGateAfterLogin(page, `${SITE_URL}/dashboard`)
 
-    // Collect the expected nav routes from the sidebar (mirrors NAV_ITEMS in AppLayout)
-    const NAV_ROUTES = [
-      { label: 'Dashboard', path: '/dashboard' },
-      { label: 'Inbox', path: '/inbox' },
-      { label: 'Products', path: '/products' },
-      { label: 'Settings', path: '/settings' },
-    ]
-
-    // Verify each nav link is present in the desktop sidebar
+    // AppLayout renders the desktop sidebar as:
+    //   <aside class="hidden md:flex w-[...] shrink-0 ...">
+    // Playwright CSS selector: aside with both classes 'hidden' and 'md:flex'
     const sidebar = page.locator('aside.hidden.md\\:flex')
+    await expect(sidebar).toBeVisible({ timeout: 10_000 })
 
-    for (const { label } of NAV_ROUTES) {
-      const navLink = sidebar.locator(`a, [role="tab"]`, { hasText: label }).first()
-      // Nav items may be locked during onboarding — accept either visible link or locked div
-      const isPresent = await navLink.isVisible().catch(() => false)
-      const isLockedPresent = await sidebar.locator(`text=${label}`).first().isVisible().catch(() => false)
-      expect(isPresent || isLockedPresent).toBe(true)
+    // NAV_ITEMS in AppLayout includes: Dashboard, Inbox, Products, Validate, Brief, Setup,
+    // Build Kit, Proposals, Playbooks, Audit, Schedule, Analyze.
+    // Settings and Briefing Room are in the bottom Resources section (also NavLinks).
+    // During onboarding, items outside ONBOARDING_UNLOCKED (/dashboard, /products, /settings)
+    // are rendered as locked <div> elements (no <a> tag).
+    // We check the four key nav items are present in any form (link or locked div).
+    const KEY_NAV_LABELS = ['Dashboard', 'Inbox', 'Products', 'Settings']
+
+    for (const label of KEY_NAV_LABELS) {
+      // Match any element in the sidebar containing this label text
+      const isPresent = await sidebar.locator(`text=${label}`).first().isVisible().catch(() => false)
+      expect(isPresent).toBe(true)
     }
 
-    // Navigate to each unlocked route and verify no hard error state
+    // Navigate to each core authenticated route with the gate already bypassed,
+    // and verify the page renders substantial content without errors.
     const NAVIGABLE_ROUTES = [
       `${SITE_URL}/products`,
       `${SITE_URL}/settings`,
@@ -269,15 +308,15 @@ test.describe('ShipSolo — Production Monitor', () => {
     for (const url of NAVIGABLE_ROUTES) {
       await page.goto(url, { waitUntil: 'networkidle' })
 
-      // Verify page did not land on /login (would mean auth failed)
+      // Auth check: must not be redirected to login
       expect(page.url()).not.toContain('/login')
       expect(page.url()).not.toContain('/auth/verify')
 
-      // Verify body has substantial content (not a blank error page)
+      // Content check: body must have substantial text (not blank/error page)
       const text = await page.locator('body').textContent()
       expect((text || '').length).toBeGreaterThan(50)
 
-      // Verify no unhandled React error boundary message
+      // No React error boundary
       const hasErrorBoundary = await page.locator('text=/Something went wrong|Unexpected error|application error/i').isVisible().catch(() => false)
       expect(hasErrorBoundary).toBe(false)
     }

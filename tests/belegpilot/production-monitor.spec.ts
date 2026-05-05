@@ -107,6 +107,8 @@ test.describe('BelegPilot — Production Monitor', () => {
   // ── Interaction tests ──────────────────────────────────────────────
 
   test('document list: search input and filter buttons are interactive', async ({ page }) => {
+    // Bypass PasswordGate before any navigation so it persists through the Supabase redirect
+    await page.addInitScript(() => sessionStorage.setItem('belegpilot-unlocked', 'true'))
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/documents`, { waitUntil: 'networkidle' })
 
@@ -117,16 +119,17 @@ test.describe('BelegPilot — Production Monitor', () => {
     await expect(searchInput).toHaveValue('Test')
     await searchInput.fill('')
 
-    // Filter buttons are present (Alle, and at least one status filter)
+    // Filter buttons are present (Alle is the default active filter)
     const filterButtons = page.locator('button[aria-current="page"], button:has-text("Alle")')
     await expect(filterButtons.first()).toBeVisible({ timeout: 5_000 })
 
     // The document table or empty-state is rendered
-    const tableOrEmpty = page.locator('table, :text("Keine Dokumente gefunden.")')
+    // Note: :text() is not valid CSS — use .or() to combine two locators
+    const tableOrEmpty = page.locator('table').or(page.locator('text=Keine Dokumente gefunden.'))
     await expect(tableOrEmpty.first()).toBeVisible({ timeout: 10_000 })
 
-    // Clicking a non-active filter doesn't crash the page
-    const verifiedFilter = page.locator('button').filter({ hasText: /Geprüft|verified/i })
+    // Clicking the Verifiziert filter doesn't crash the page
+    const verifiedFilter = page.locator('button').filter({ hasText: /Verifiziert/i })
     if (await verifiedFilter.count() > 0) {
       await verifiedFilter.first().click()
       await page.waitForLoadState('networkidle')
@@ -135,39 +138,46 @@ test.describe('BelegPilot — Production Monitor', () => {
   })
 
   test('document upload: dropzone and file input are present and interactive', async ({ page }) => {
+    // Bypass PasswordGate before any navigation so it persists through the Supabase redirect
+    await page.addInitScript(() => sessionStorage.setItem('belegpilot-unlocked', 'true'))
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/upload`, { waitUntil: 'networkidle' })
 
-    // Drop zone container is visible
+    // Drop zone container is visible (has border-dashed class)
     const dropzone = page.locator('.border-dashed').first()
     await expect(dropzone).toBeVisible({ timeout: 10_000 })
 
-    // The "Dateien auswählen" label/button is rendered
-    const selectLabel = page.locator('text=Dateien auswählen')
-    await expect(selectLabel).toBeVisible({ timeout: 5_000 })
+    // The drag-and-drop instruction text is rendered
+    await expect(page.locator('text=Dateien hierher ziehen oder klicken zum Auswählen')).toBeVisible({ timeout: 5_000 })
 
-    // Hidden file input exists and accepts the right types
+    // The "Dateien auswählen" button label is rendered
+    await expect(page.locator('text=Dateien auswählen')).toBeVisible({ timeout: 5_000 })
+
+    // Hidden file input exists and accepts the right MIME types
     const fileInput = page.locator('input[type="file"]')
     await expect(fileInput).toBeAttached({ timeout: 5_000 })
     const accept = await fileInput.getAttribute('accept')
     expect(accept).toContain('application/pdf')
 
-    // Instruction text is visible
+    // Supported format hint text is visible (source: "PDF, JPG, PNG, TIFF — max. 20 MB pro Datei")
     await expect(page.locator('text=PDF, JPG, PNG, TIFF')).toBeVisible({ timeout: 5_000 })
   })
 
   test('dashboard: metric cards render with values', async ({ page }) => {
+    // Bypass PasswordGate before any navigation so it persists through the Supabase redirect
+    await page.addInitScript(() => sessionStorage.setItem('belegpilot-unlocked', 'true'))
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
 
-    // All four metric card labels are present
+    // All four metric card labels are present (hardcoded uppercase strings in source)
     await expect(page.locator('text=BELEGE GESAMT')).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('text=VERARBEITET')).toBeVisible({ timeout: 5_000 })
     await expect(page.locator('text=ZUR PRÜFUNG')).toBeVisible({ timeout: 5_000 })
     await expect(page.locator('text=EXPORTIERT (CHF)')).toBeVisible({ timeout: 5_000 })
 
-    // Each card contains a numeric value (font-mono class)
-    const metricValues = page.locator('.font-mono.text-2xl')
+    // Each metric card contains a numeric value rendered with font-mono text-2xl
+    // The <p> element has classes: font-mono text-2xl font-semibold text-foreground
+    const metricValues = page.locator('p.font-mono.text-2xl')
     await expect(metricValues.first()).toBeVisible({ timeout: 5_000 })
     const count = await metricValues.count()
     expect(count).toBeGreaterThanOrEqual(4)
@@ -175,11 +185,13 @@ test.describe('BelegPilot — Production Monitor', () => {
     // "Letzte Dokumente" section heading is present
     await expect(page.locator('h2:has-text("Letzte Dokumente")')).toBeVisible({ timeout: 5_000 })
 
-    // "Beleg hochladen" action button is present in the header
+    // "Beleg hochladen" action link is present in the page header
     await expect(page.locator('text=Beleg hochladen')).toBeVisible({ timeout: 5_000 })
   })
 
   test('settings: tabs are present and each tab renders content', async ({ page }) => {
+    // Bypass PasswordGate before any navigation so it persists through the Supabase redirect
+    await page.addInitScript(() => sessionStorage.setItem('belegpilot-unlocked', 'true'))
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
 
@@ -218,17 +230,19 @@ test.describe('BelegPilot — Production Monitor', () => {
   })
 
   test('navigation: sidebar links load correct pages', async ({ page }) => {
+    // Bypass PasswordGate before any navigation so it persists through the Supabase redirect
+    await page.addInitScript(() => sessionStorage.setItem('belegpilot-unlocked', 'true'))
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
 
-    // Sidebar nav is present
+    // Sidebar nav is present (inside the lg: desktop sidebar, visible at ≥1024px viewport)
     const nav = page.locator('nav[aria-label="Hauptnavigation"]')
     await expect(nav).toBeVisible({ timeout: 10_000 })
 
-    // All expected nav links are present in the sidebar
+    // All expected nav links and their confirmed on-page text (verified against source)
     const navLinks: { label: string; href: string; expectedText: string }[] = [
       { label: 'Dokumente', href: '/documents', expectedText: 'Dokumente' },
-      { label: 'Upload', href: '/upload', expectedText: 'Dateien hierher ziehen' },
+      { label: 'Upload', href: '/upload', expectedText: 'Dateien hierher ziehen oder klicken zum Auswählen' },
       { label: 'Clients', href: '/clients', expectedText: 'Mandanten' },
       { label: 'Export', href: '/export', expectedText: 'Export' },
       { label: 'Einstellungen', href: '/settings', expectedText: 'Firmenprofil' },

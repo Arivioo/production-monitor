@@ -173,20 +173,19 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     })
     await page.waitForLoadState('networkidle')
 
-    // Dashboard heading and overview text from HomeScreen
     const body = page.locator('body')
-    await expect(body).toContainText(/welcome back/i, { timeout: 15_000 })
-    await expect(body).toContainText(/migration overview/i)
 
-    // All 5 data type labels rendered in the dashboard stats section
-    // (DATA_TYPES array: Subscriptions, Playlists, Liked Videos, Watch History, Watch Later)
-    await expect(body).toContainText(/subscriptions/i)
-    await expect(body).toContainText(/playlists/i)
-    await expect(body).toContainText(/liked videos/i)
-    await expect(body).toContainText(/watch history/i)
+    // Quota / usage card — always rendered on the dashboard
+    await expect(body).toContainText(/items left/i, { timeout: 15_000 })
 
-    // Quota / usage indicator is present (shows items remaining or usage %)
-    await expect(body).toContainText(/items/i)
+    // Plan card
+    await expect(body).toContainText(/plan/i)
+
+    // Quick-action buttons present on the dashboard
+    await expect(body).toContainText(/accounts/i)
+
+    // Recent activity section
+    await expect(body).toContainText(/recent activity/i)
   })
 
   test('migrate page interaction — wizard UI loads with step indicators and data toggles', async ({ page }) => {

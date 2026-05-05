@@ -740,30 +740,33 @@ test.describe('BackOffice — Production Monitor', () => {
     // Wait for Stripe API calls to resolve
     await page.waitForTimeout(3000)
 
-    // Three summary cards: Zahlungen, Rechnungen bezahlt, Auszahlungen
-    await expect(page.locator('text=Zahlungen').first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator('text=Rechnungen bezahlt').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('text=Auszahlungen').first()).toBeVisible({ timeout: 10_000 })
+    // Three summary card labels are present (verified in real DOM as <p class="text-sm text-muted-foreground">)
+    // Use exact text locators to avoid matching the table section h2 "Zahlungen"
+    await expect(page.locator('p:has-text("Rechnungen bezahlt")').first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('p:has-text("Auszahlungen")').first()).toBeVisible({ timeout: 10_000 })
 
-    // Summary card values are numeric (not NaN or undefined)
-    const chargesCard = page.locator('.grid .rounded-lg').filter({ hasText: 'Zahlungen' }).first()
-    const chargesValue = chargesCard.locator('p.text-2xl').first()
+    // Summary card value for Zahlungen is numeric (not NaN or undefined)
+    // DOM structure: <div class="rounded-lg border border-border bg-card p-4">
+    //   <p class="text-sm text-muted-foreground">Zahlungen</p>
+    //   <p class="mt-1 text-2xl font-semibold font-mono text-card-foreground">1</p>
+    // </div>
+    // Use nth(0) on value-only paragraphs — the class "mt-1 text-2xl ..." is unique to the 3 numeric
+    // card values (Zahlungen=index 0, Rechnungen bezahlt=index 1, Auszahlungen=index 2)
+    const chargesValue = page.locator('p.mt-1.text-2xl').nth(0)
     await expect(chargesValue).toBeVisible({ timeout: 10_000 })
-    const chargesText = await chargesValue.textContent()
+    const chargesText = (await chargesValue.textContent())?.trim() ?? ''
     expect(chargesText, 'Charges count should be a number').toMatch(/^\d+$/)
 
-    // Stripe Zahlungen table section heading is present
+    // Stripe Zahlungen table section heading is present (verified: h2 with text "Zahlungen" exists)
     await expect(page.locator('h2:has-text("Zahlungen")').first()).toBeVisible({ timeout: 10_000 })
 
-    // Balance section visible if Stripe responds
-    const balanceSection = page.locator('text=Stripe Kontostand').first()
-    const balanceVisible = await balanceSection.isVisible().catch(() => false)
-    if (balanceVisible) {
-      // Verfügbar label should show a CHF amount or 0
-      await expect(page.locator('text=Verfügbar').first()).toBeVisible({ timeout: 10_000 })
-    }
+    // Stripe Kontostand balance section is always rendered (it is a permanent h2)
+    await expect(page.locator('h2:has-text("Stripe Kontostand")').first()).toBeVisible({ timeout: 10_000 })
+    // Verfügbar label is always present under the balance card
+    await expect(page.locator('text=Verfügbar').first()).toBeVisible({ timeout: 10_000 })
 
-    // Payouts table heading is present
-    await expect(page.locator('h2:has-text("Auszahlungen")').first()).toBeVisible({ timeout: 10_000 })
+    // Rechnungen table section heading is present (verified: h2 with text "Rechnungen" exists)
+    // Note: there is NO h2 "Auszahlungen" — payouts only appear as a summary card label, not a table section
+    await expect(page.locator('h2:has-text("Rechnungen")').first()).toBeVisible({ timeout: 10_000 })
   })
 })
