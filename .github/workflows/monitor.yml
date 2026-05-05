@@ -78,6 +78,12 @@ jobs:
           APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}
           APIS_SERVICE_ROLE_KEY: ${{ secrets.APIS_SERVICE_ROLE_KEY }}
           APIS_ANON_KEY: ${{ secrets.APIS_ANON_KEY }}
+          # IMAP (for E2E OTP email reading)
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_PORT: '993'
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASS: ${{ secrets.IMAP_PASS }}
+          OTP_TEST_EMAIL: ${{ secrets.IMAP_USER }}
           # Alert config
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: '465'
