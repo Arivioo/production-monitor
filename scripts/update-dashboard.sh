@@ -72,9 +72,9 @@ for REPO in $REPOS; do
     echo "  ${REPO}: ${CURRENT_COMMITS} -> ${COMMIT_COUNT} commits (+${NEW_COMMITS}), last active: ${FORMATTED_DATE}"
     CHANGES=$((CHANGES + 1))
 
-    # Fetch recent commit messages (up to 5 or the delta, whichever is smaller)
-    FETCH_COUNT=5
-    if [ "$NEW_COMMITS" -gt 0 ] && [ "$NEW_COMMITS" -lt 5 ]; then
+    # Fetch recent commit messages (up to 10 or the delta, whichever is smaller)
+    FETCH_COUNT=10
+    if [ "$NEW_COMMITS" -gt 0 ] && [ "$NEW_COMMITS" -lt 10 ]; then
       FETCH_COUNT=$NEW_COMMITS
     fi
 
