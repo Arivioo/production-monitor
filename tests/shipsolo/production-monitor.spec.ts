@@ -23,15 +23,15 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
 }
 
 /**
- * After loginViaMagicLink the user lands at siteUrl with the PasswordGate
- * still blocking (fresh sessionStorage per Playwright page).
- * Call this after loginViaMagicLink to inject the bypass key and navigate
- * to the desired authenticated route.
+ * Dismiss the PasswordGate if it appears by entering the access code.
  */
-async function bypassGateAfterLogin(page: import('@playwright/test').Page, url: string): Promise<void> {
-  // Inject bypass key into the current origin's sessionStorage, then navigate
-  await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
-  await page.goto(url, { waitUntil: 'networkidle' })
+async function dismissGateIfVisible(page: import('@playwright/test').Page): Promise<void> {
+  const gateInput = page.locator('input[placeholder="Access code"]')
+  if (await gateInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await gateInput.fill('predivo2026')
+    await page.locator('button[type="submit"]').click()
+    await gateInput.waitFor({ state: 'hidden', timeout: 5_000 })
+  }
 }
 
 test.describe('ShipSolo — Production Monitor', () => {
@@ -101,9 +101,10 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('products CRUD: add product, verify in list, delete via settings', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
-    // Double-ensure gate is bypassed after login redirect
     await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
+
+    await dismissGateIfVisible(page)
 
     // Products page renders either product cards or the empty state with "+ Add Product"
     const addBtn = page.locator('button', { hasText: /Add Product/i }).first()
@@ -170,6 +171,7 @@ test.describe('ShipSolo — Production Monitor', () => {
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
+    await dismissGateIfVisible(page)
 
     // ProductsList renders product cards as <Link to="/products/:id"> (renders as <a href="/products/:id">)
     const productLinks = page.locator('a[href^="/products/"]')
@@ -207,6 +209,7 @@ test.describe('ShipSolo — Production Monitor', () => {
     await loginViaMagicLink(page, AUTH_CONFIG)
     await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
+    await dismissGateIfVisible(page)
 
     // Settings.tsx renders: <h1>Settings</h1>
     const heading = page.locator('h1', { hasText: /^Settings$/i })
