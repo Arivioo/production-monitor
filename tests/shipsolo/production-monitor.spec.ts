@@ -101,6 +101,8 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('products CRUD: add product, verify in list, delete via settings', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
+    // Double-ensure gate is bypassed after login redirect
+    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
 
     // Products page renders either product cards or the empty state with "+ Add Product"
@@ -124,6 +126,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('dashboard data: shows command center heading and score badge', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
+    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
 
     // The dashboard shows one of:
@@ -165,6 +168,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('product detail: click product card and verify detail view loads', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
+    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
 
     // ProductsList renders product cards as <Link to="/products/:id"> (renders as <a href="/products/:id">)
@@ -201,6 +205,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('settings interaction: tabs work, AI config BYOK field exists, subscription tier displayed', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
+    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
 
     // Settings.tsx renders: <h1>Settings</h1>
@@ -239,6 +244,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('navigation completeness: all sidebar nav items present and navigable without errors', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
+    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
 
     // AppLayout renders the desktop sidebar as:

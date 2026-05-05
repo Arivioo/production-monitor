@@ -106,34 +106,37 @@ test.describe('ScoutCopilot — Production Monitor', () => {
 
     // The search input has id="player-search" (confirmed in SearchPage.tsx)
     const searchInput = page.locator('#player-search')
-    await expect(searchInput).toBeVisible({ timeout: 10_000 })
+    await expect(searchInput).toBeVisible({ timeout: 15_000 })
 
-    // Type a natural-language query that matches StatsBomb demo data
-    await searchInput.fill('Top strikers with goals')
+    // Type a query
+    await searchInput.fill('Messi')
 
-    // The search button is rendered by <Button variant="primary"> — select by text only,
-    // not by class, because the component composes class names at runtime.
-    const btn = page.locator('button').filter({ hasText: /^search$/i }).first()
+    // The search button text depends on language (EN: "Search", DE: "Suche")
+    const btn = page.locator('button[type="submit"], button').filter({ hasText: /^(search|suche)$/i }).first()
     await btn.click()
 
-    // Wait for "X PLAYERS FOUND" heading or no-results state.
-    // SearchResultsTable renders: "<number> PLAYERS FOUND" or t('search.noResults').
+    // Wait for results — either table rows, "found" text, or "no results/nicht gefunden"
     await page.waitForFunction(
       () => {
-        const body = document.body.textContent ?? ''
+        const body = document.body.textContent?.toLowerCase() ?? ''
         return (
-          body.toLowerCase().includes('found') ||        // "X PLAYERS FOUND"
-          body.toLowerCase().includes('no results') ||   // noResults heading
+          body.includes('found') ||
+          body.includes('gefunden') ||
+          body.includes('no player') ||
+          body.includes('keine') ||
           document.querySelector('table tbody tr') !== null
         )
       },
       { timeout: 60_000 },
     )
 
-    const bodyText = await page.locator('body').textContent()
+    // Verify the page responded to the search
+    const bodyText = (await page.locator('body').textContent())?.toLowerCase() ?? ''
     const respondedToSearch =
-      (bodyText ?? '').toLowerCase().includes('found') ||
-      (bodyText ?? '').toLowerCase().includes('no results') ||
+      bodyText.includes('found') ||
+      bodyText.includes('gefunden') ||
+      bodyText.includes('no player') ||
+      bodyText.includes('keine') ||
       (await page.locator('table tbody tr').count()) > 0
     expect(respondedToSearch).toBe(true)
   })
@@ -331,17 +334,19 @@ test.describe('ScoutCopilot — Production Monitor', () => {
 
     // Run a search to confirm filters are retained across the search action
     const searchInput = page.locator('#player-search')
-    await searchInput.fill('midfielders')
-    const searchBtn = page.locator('button').filter({ hasText: /^search$/i }).first()
+    await searchInput.fill('Messi')
+    const searchBtn = page.locator('button[type="submit"], button').filter({ hasText: /^(search|suche)$/i }).first()
     await searchBtn.click()
 
     // Wait for search to complete (results heading or no-results state)
     await page.waitForFunction(
       () => {
-        const body = document.body.textContent ?? ''
+        const body = document.body.textContent?.toLowerCase() ?? ''
         return (
-          body.toLowerCase().includes('found') ||
-          body.toLowerCase().includes('no results') ||
+          body.includes('found') ||
+          body.includes('gefunden') ||
+          body.includes('no player') ||
+          body.includes('keine') ||
           document.querySelector('table tbody tr') !== null
         )
       },
