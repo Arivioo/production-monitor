@@ -84,4 +84,119 @@ test.describe('LaunchReady — Production Monitor', () => {
     const text = await page.locator('body').textContent()
     expect((text || '').length).toBeGreaterThan(50)
   })
+
+  // ── Interaction tests ──────────────────────────────────────────────
+
+  test('audit form accepts URL input and submit button is available', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    // The AuditForm renders an input with aria-label="Website URL"
+    const urlInput = page.locator('input[aria-label="Website URL"]')
+    await expect(urlInput).toBeVisible({ timeout: 10_000 })
+    await urlInput.fill('https://example.com')
+    await expect(urlInput).toHaveValue('https://example.com')
+    // Submit button is enabled only when input is non-empty
+    const submitBtn = page.locator('button[type="submit"]')
+    await expect(submitBtn).toBeVisible()
+    await expect(submitBtn).toBeEnabled()
+    // Do not submit — would trigger expensive edge function call
+  })
+
+  test('dashboard shows audit history or empty-state prompt after login', async ({ page }) => {
+    await loginViaMagicLink(page, AUTH_CONFIG)
+    await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
+    // Dashboard renders "My Audits" heading for authenticated users
+    const auditsHeading = page.locator('h2', { hasText: 'My Audits' })
+    await expect(auditsHeading).toBeVisible({ timeout: 10_000 })
+    // Either audit cards or the empty-state prompt must be present
+    const auditCards = page.locator('.space-y-3 > div')
+    const emptyPrompt = page.locator('text=No audits yet')
+    const hasCards = await auditCards.count() > 0
+    const hasEmpty = await emptyPrompt.isVisible().catch(() => false)
+    expect(hasCards || hasEmpty).toBe(true)
+  })
+
+  test('dashboard audit cards have scores and dates when audits exist', async ({ page }) => {
+    await loginViaMagicLink(page, AUTH_CONFIG)
+    await page.goto(`${SITE_URL}/dashboard`, { waitUntil: 'networkidle' })
+    await page.locator('h2', { hasText: 'My Audits' }).waitFor({ timeout: 10_000 })
+    const auditCards = page.locator('.space-y-3 > div')
+    const count = await auditCards.count()
+    if (count > 0) {
+      const firstCard = auditCards.first()
+      // Each AuditCard shows a numeric score out of 100
+      const scoreText = firstCard.locator('text=/\\d+/')
+      await expect(scoreText.first()).toBeVisible()
+      // Each AuditCard shows a date via Clock icon row (contains a month abbreviation)
+      const cardText = await firstCard.textContent()
+      expect(cardText).toMatch(/Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/)
+    }
+    // If no audits exist, the empty-state "Run Audit" link must be present instead
+    if (count === 0) {
+      await expect(page.locator('a', { hasText: 'Run Audit' })).toBeVisible()
+    }
+  })
+
+  test('landing page sections all load', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    // Hero section — badge text is always present
+    await expect(page.locator('text=Free audit — no signup required')).toBeVisible({ timeout: 10_000 })
+    // Feature pill list below the form
+    await expect(page.locator('text=Meta tags')).toBeVisible()
+    await expect(page.locator('text=Sitemap & robots.txt')).toBeVisible()
+    // "How it works" section
+    const howSection = page.locator('#how-it-works')
+    await expect(howSection).toBeVisible()
+    await expect(page.locator('h2', { hasText: 'How it works' })).toBeVisible()
+    // Four step cards rendered inside HowItWorks
+    const steps = page.locator('h3')
+    const stepTitles = await steps.allTextContents()
+    expect(stepTitles).toContain('Paste your URL')
+    expect(stepTitles).toContain('Get copy-paste fixes')
+    // Comparison section
+    await expect(page.locator('h2', { hasText: 'Why not just use Lighthouse' })).toBeVisible()
+    // Comparison table header column
+    await expect(page.locator('th', { hasText: 'LaunchReady' })).toBeVisible()
+  })
+
+  test('privacy page has substantial paragraph content', async ({ page }) => {
+    await bypassPasswordGate(page, `${SITE_URL}/privacy`)
+    await expect(page.locator('h1', { hasText: 'Privacy Policy' })).toBeVisible({ timeout: 10_000 })
+    // Must have multiple headings (11 sections in source)
+    const h2s = page.locator('h2')
+    await expect(h2s).toHaveCount(11)
+    // Must contain substantive prose — check a unique phrase from the source
+    await expect(page.locator('text=Predivo GmbH')).toBeVisible()
+    await expect(page.locator('text=Küssnacht am Rigi')).toBeVisible()
+    // Body text must exceed 500 characters of meaningful content
+    const bodyText = await page.locator('section').textContent()
+    expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(500)
+  })
+
+  test('terms page has substantial paragraph content', async ({ page }) => {
+    await bypassPasswordGate(page, `${SITE_URL}/terms`)
+    await expect(page.locator('h1', { hasText: 'Terms of Service' })).toBeVisible({ timeout: 10_000 })
+    // Must have multiple headings (12 sections in source)
+    const h2s = page.locator('h2')
+    await expect(h2s).toHaveCount(12)
+    // Key legal terms from the source must be present
+    await expect(page.locator('text=Predivo GmbH')).toBeVisible()
+    await expect(page.locator('text=CHE-374.611.592')).toBeVisible()
+    const bodyText = await page.locator('section').textContent()
+    expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(500)
+  })
+
+  test('impressum page has company details and legal content', async ({ page }) => {
+    await bypassPasswordGate(page, `${SITE_URL}/impressum`)
+    await expect(page.locator('h1', { hasText: 'Impressum' })).toBeVisible({ timeout: 10_000 })
+    // Company name, address, UID must all be present
+    await expect(page.locator('text=Predivo GmbH')).toBeVisible()
+    await expect(page.locator('text=Bahnhofstrasse 55')).toBeVisible()
+    await expect(page.locator('text=CHE-374.611.592')).toBeVisible()
+    await expect(page.locator('text=Roger Müller')).toBeVisible()
+    // Sections present
+    await expect(page.locator('h2', { hasText: 'Authorized Representative' })).toBeVisible()
+    await expect(page.locator('h2', { hasText: 'Commercial Register' })).toBeVisible()
+    const bodyText = await page.locator('section').textContent()
+    expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(200)
+  })
 })

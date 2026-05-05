@@ -160,4 +160,186 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     const text = await body.textContent()
     expect((text || '').length).toBeGreaterThan(50)
   })
+
+  // ── Interaction tests ────────────────────────────────────────────
+
+  test('dashboard data verification — sections and data type labels visible after login', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+    await page.waitForLoadState('networkidle')
+
+    // Dashboard heading and overview text from HomeScreen
+    const body = page.locator('body')
+    await expect(body).toContainText(/welcome back/i, { timeout: 15_000 })
+    await expect(body).toContainText(/migration overview/i)
+
+    // All 5 data type labels rendered in the dashboard stats section
+    // (DATA_TYPES array: Subscriptions, Playlists, Liked Videos, Watch History, Watch Later)
+    await expect(body).toContainText(/subscriptions/i)
+    await expect(body).toContainText(/playlists/i)
+    await expect(body).toContainText(/liked videos/i)
+    await expect(body).toContainText(/watch history/i)
+
+    // Quota / usage indicator is present (shows items remaining or usage %)
+    await expect(body).toContainText(/items/i)
+  })
+
+  test('migrate page interaction — wizard UI loads with step indicators and data toggles', async ({ page }) => {
+    await loginViaMagicLink(page, {
+      supabaseUrl: SUPABASE_URL,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+      anonKey: ANON_KEY,
+      testEmail: TEST_EMAIL,
+      siteUrl: SITE_URL,
+    })
+    await page.waitForLoadState('networkidle')
+
+    await page.goto(`${SITE_URL}/migrate`)
+    await page.waitForLoadState('networkidle')
+
+    const body = page.locator('body')
+
+    // Migration wizard heading (ScreenHeader title="Migration Wizard")
+    await expect(body).toContainText(/migration wizard/i, { timeout: 15_000 })
+
+    // Step 1 and 2 labels from YTStepIndicator
+    await expect(body).toContainText(/source/i)
+    await expect(body).toContainText(/destination/i)
+
+    // Step 3 — data type toggles (YTToggleRow labels)
+    await expect(body).toContainText(/subscriptions/i)
+    await expect(body).toContainText(/playlists/i)
+
+    // "Review & Start" CTA button must be present (may be disabled, still rendered)
+    await expect(body).toContainText(/review & start/i)
+  })
+
+  test('pricing page interaction — 3 tiers with prices, feature lists, and CTA buttons', async ({ page }) => {
+    await page.goto(`${SITE_URL}/pricing`)
+    await page.waitForLoadState('networkidle')
+
+    const body = page.locator('body')
+
+    // Tier names from PRICING array in pricing.tsx
+    await expect(body).toContainText('Free')
+    await expect(body).toContainText('Standard')
+    await expect(body).toContainText('Pro')
+
+    // Prices — $0, $4.99, $7.99
+    await expect(body).toContainText('$0')
+    await expect(body).toContainText('$4.99')
+    await expect(body).toContainText('$7.99')
+
+    // Feature list items
+    await expect(body).toContainText(/subscriptions transfer/i)
+    await expect(body).toContainText(/50 items included/i)
+    await expect(body).toContainText(/playlists with all videos/i)
+
+    // CTA buttons rendered for each tier
+    await expect(body).toContainText('Get Started')
+    await expect(body).toContainText('Choose Standard')
+    await expect(body).toContainText('Choose Pro')
+
+    // Top-Up Packs section
+    await expect(body).toContainText(/top-up packs/i)
+
+    // Verify "Get Started" CTA is clickable (exists and is not hidden)
+    const getStartedBtn = page.locator('text=Get Started').first()
+    await expect(getStartedBtn).toBeVisible({ timeout: 10_000 })
+    await getStartedBtn.click()
+    // After click, should navigate toward auth login (Google OAuth page)
+    await page.waitForLoadState('networkidle')
+    const urlAfterClick = page.url()
+    expect(urlAfterClick).toMatch(/auth\/login|accounts\.google|ytmigration\.com/)
+  })
+
+  test('extension page interaction — Chrome extension info sections and browser compatibility', async ({ page }) => {
+    await page.goto(`${SITE_URL}/extension`)
+    await page.waitForLoadState('networkidle')
+
+    const body = page.locator('body')
+
+    // Page heading
+    await expect(body).toContainText('Chrome Extension', { timeout: 10_000 })
+
+    // Key informational sections from extension.tsx
+    await expect(body).toContainText(/what does the extension do/i)
+    await expect(body).toContainText(/how to install/i)
+    await expect(body).toContainText(/how it works/i)
+    await expect(body).toContainText(/privacy/i)
+
+    // Browser compatibility list: Google Chrome is supported
+    await expect(body).toContainText('Google Chrome')
+    await expect(body).toContainText(/supported/i)
+
+    // Microsoft Edge and Firefox listed (coming soon)
+    await expect(body).toContainText('Microsoft Edge')
+    await expect(body).toContainText('Mozilla Firefox')
+
+    // Install/beta note
+    await expect(body).toContainText(/beta/i)
+  })
+
+  test('guide page interaction — step-by-step guide content with data type sections', async ({ page }) => {
+    await page.goto(`${SITE_URL}/guide/youtube-account-migration`)
+    await page.waitForLoadState('networkidle')
+
+    const body = page.locator('body')
+
+    // Guide must have substantial content
+    const text = await body.textContent()
+    expect((text || '').length).toBeGreaterThan(500)
+
+    // Data type sections from DATA_TYPES array in the guide page
+    await expect(body).toContainText('Subscriptions', { timeout: 10_000 })
+    await expect(body).toContainText('Playlists')
+    await expect(body).toContainText('Liked Videos')
+    await expect(body).toContainText('Watch History')
+
+    // Comparison methods section (METHODS array)
+    await expect(body).toContainText(/manual/i)
+    await expect(body).toContainText(/google takeout/i)
+
+    // YouTube migration context
+    await expect(body).toContainText(/youtube/i)
+    await expect(body).toContainText(/migration/i)
+  })
+
+  test('landing page CTA flow — hero buttons present and Get Started navigates to auth', async ({ page }) => {
+    // Landing page is at /landing (unauthenticated public page)
+    await page.goto(`${SITE_URL}/landing`)
+    await page.waitForLoadState('networkidle')
+
+    const body = page.locator('body')
+
+    // Hero headline from landing.tsx
+    await expect(body).toContainText(/switch youtube accounts/i, { timeout: 10_000 })
+
+    // Hero CTA buttons: "Get Started Free" and "See How It Works"
+    await expect(body).toContainText(/get started free/i)
+    await expect(body).toContainText(/see how it works/i)
+
+    // Trust line beneath hero CTAs
+    await expect(body).toContainText(/no credit card required/i)
+
+    // Pricing section on landing page (section-pricing)
+    await expect(body).toContainText(/simple, item-based pricing/i)
+
+    // Click the primary hero "Get Started Free" CTA
+    const heroBtn = page.locator('[accessibilityLabel="Get started free"]').first()
+    const heroBtnAlt = page.locator('text=Get Started Free').first()
+    const target = (await heroBtn.count()) > 0 ? heroBtn : heroBtnAlt
+    await expect(target).toBeVisible({ timeout: 10_000 })
+    await target.click()
+    await page.waitForLoadState('networkidle')
+
+    // Should navigate to /auth/login (Google OAuth sign-in page)
+    const urlAfter = page.url()
+    expect(urlAfter).toMatch(/auth\/login|accounts\.google|ytmigration\.com/)
+  })
 })
