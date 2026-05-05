@@ -23,14 +23,21 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
 }
 
 /**
- * Dismiss the PasswordGate by forcing sessionStorage and reloading.
- * The gate checks sessionStorage on initial render; after reload with the key set, it passes through.
+ * Navigate to target URL with PasswordGate bypassed.
+ * Sets sessionStorage key via page context, then navigates.
+ * If gate still shows, force-sets key and reloads.
  */
-async function dismissGateIfVisible(page: import('@playwright/test').Page): Promise<void> {
+async function gotoWithGateBypass(page: import('@playwright/test').Page, url: string): Promise<void> {
+  // First, ensure we're on the correct origin to set sessionStorage
+  const currentUrl = page.url()
+  if (!currentUrl.includes('distributionos.predivo.ch')) {
+    await page.goto(SITE_URL, { waitUntil: 'commit' })
+  }
+  await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
+  await page.goto(url, { waitUntil: 'networkidle' })
+  // If gate still intercepts (React rendered before sessionStorage was set), reload
   const gateInput = page.locator('input[placeholder="Access code"]')
-  const gateShowing = await gateInput.isVisible({ timeout: 3_000 }).catch(() => false)
-  if (gateShowing) {
-    // Set the key and reload — React will read it on next mount
+  if (await gateInput.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
     await page.reload({ waitUntil: 'networkidle' })
   }
@@ -103,10 +110,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('products CRUD: add product, verify in list, delete via settings', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
-    await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
-
-    await dismissGateIfVisible(page)
+    await gotoWithGateBypass(page, `${SITE_URL}/products`)
 
     // Products page renders either product cards or the empty state with "+ Add Product"
     const addBtn = page.locator('button', { hasText: /Add Product/i }).first()
@@ -171,9 +175,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('product detail: click product card and verify detail view loads', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
-    await page.goto(`${SITE_URL}/products`, { waitUntil: 'networkidle' })
-    await dismissGateIfVisible(page)
+    await gotoWithGateBypass(page, `${SITE_URL}/products`)
 
     // ProductsList renders product cards as <Link to="/products/:id"> (renders as <a href="/products/:id">)
     const productLinks = page.locator('a[href^="/products/"]')
@@ -209,9 +211,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('settings interaction: tabs work, AI config BYOK field exists, subscription tier displayed', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
-    await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
-    await dismissGateIfVisible(page)
+    await gotoWithGateBypass(page, `${SITE_URL}/settings`)
 
     // Settings.tsx renders: <h1>Settings</h1>
     const heading = page.locator('h1', { hasText: /^Settings$/i })
