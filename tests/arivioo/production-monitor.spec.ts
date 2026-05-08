@@ -30,4 +30,12 @@ test.describe('Arivioo — Production Monitor', () => {
     const url = page.url()
     expect(url).not.toContain('/auth')
   })
+
+  test('site identity — title contains arivioo', async ({ page }) => {
+    await page.goto(SITE_URL, { waitUntil: 'networkidle' })
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'arivioo.com must contain "arivioo" branding').toContain('arivioo')
+  })
 })

@@ -229,6 +229,14 @@ test.describe('BelegPilot — Production Monitor', () => {
     await expect(page.locator('text=ERP-SYSTEM').first()).toBeVisible({ timeout: 5_000 })
   })
 
+  test('site identity — title contains belegpilot', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'belegpilot.predivo.ch must contain "belegpilot" branding').toContain('belegpilot')
+  })
+
   test('navigation: sidebar links load correct pages', async ({ page }) => {
     // Bypass PasswordGate before any navigation so it persists through the Supabase redirect
     await page.addInitScript(() => sessionStorage.setItem('belegpilot-unlocked', 'true'))

@@ -398,6 +398,14 @@ test.describe('ReplyFlow — Production Monitor', () => {
     await expect(notifContent).toBeVisible({ timeout: 15_000 })
   })
 
+  test('site identity — title contains replyflow', async ({ page }) => {
+    await page.goto(SITE_URL, { waitUntil: 'networkidle' })
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'replyflow.help must contain "replyflow" branding').toContain('replyflow')
+  })
+
   test('navigation flow — sidebar has all nav items, clicking each loads the correct page without errors', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_OPTS())
     await page.goto(`${SITE_URL}/app`, { waitUntil: 'networkidle' })

@@ -243,6 +243,17 @@ test.describe('ShipSolo — Production Monitor', () => {
     expect((generalText || '').length).toBeGreaterThan(20)
   })
 
+  test('site identity — title contains shipsolo or distribution', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(
+      combined.includes('shipsolo') || combined.includes('distribution'),
+      'distributionos.predivo.ch must contain "shipsolo" or "distribution" branding',
+    ).toBe(true)
+  })
+
   test('navigation completeness: all sidebar nav items present and navigable without errors', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('distribution-os-dev-access', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)

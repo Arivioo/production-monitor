@@ -332,6 +332,14 @@ test.describe('SignalScore — Production Monitor', () => {
     await expect(page.locator('text=Free').first()).toBeVisible({ timeout: 5_000 })
   })
 
+  test('site identity — title contains signalscore', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'signalscore.ch must contain "signalscore" branding').toContain('signalscore')
+  })
+
   test('methodology page: all 7 sections render and dimension cards are visible', async ({ page }) => {
     // Methodology is accessible both as a public page and as an authenticated route.
     // Test the public route so no login is needed.

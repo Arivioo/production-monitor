@@ -298,6 +298,14 @@ test.describe('ScoutCopilot — Production Monitor', () => {
     expect(billingText.toLowerCase()).toMatch(/plan|billing|subscription|tier/)
   })
 
+  test('site identity — title contains scoutcopilot', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'scoutcopilot.com must contain "scoutcopilot" branding').toContain('scoutcopilot')
+  })
+
   test('search filters: position filter changes and UI reflects the update', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)

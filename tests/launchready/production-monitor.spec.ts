@@ -198,6 +198,14 @@ test.describe('LaunchReady — Production Monitor', () => {
     expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(500)
   })
 
+  test('site identity — title contains launchready', async ({ page }) => {
+    await bypassPasswordGate(page, SITE_URL)
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'launchready.predivo.ch must contain "launchready" branding').toContain('launchready')
+  })
+
   test('impressum page has company details and legal content', async ({ page }) => {
     await bypassPasswordGate(page, `${SITE_URL}/impressum`)
     await expect(page.locator('h1', { hasText: 'Impressum' })).toBeVisible({ timeout: 10_000 })

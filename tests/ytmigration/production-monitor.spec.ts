@@ -309,6 +309,17 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     await expect(body).toContainText(/migration/i)
   })
 
+  test('site identity — title contains ytmigration or youtube migration', async ({ page }) => {
+    await page.goto(SITE_URL, { waitUntil: 'networkidle' })
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(
+      combined.includes('ytmigration') || combined.includes('youtube migration'),
+      'ytmigration.com must contain "ytmigration" or "youtube migration" branding',
+    ).toBe(true)
+  })
+
   test('landing page CTA flow — hero buttons present and Get Started navigates to auth', async ({ page }) => {
     // Landing page is at /landing (unauthenticated public page)
     await page.goto(`${SITE_URL}/landing`)

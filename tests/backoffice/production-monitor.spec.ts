@@ -280,6 +280,16 @@ test.describe('BackOffice — Production Monitor', () => {
     await expect(balanceLocator).toBeVisible({ timeout: 15_000 })
   })
 
+  // ── Site identity ──────────────────────────────────────────────
+
+  test('site identity — title contains predivo', async ({ page }) => {
+    await page.goto(SITE_URL, { waitUntil: 'networkidle' })
+    const title = await page.title()
+    const body = await page.textContent('body')
+    const combined = `${title} ${body}`.toLowerCase()
+    expect(combined, 'backoffice.predivo.ch must contain "predivo" branding').toContain('predivo')
+  })
+
   // ── Console errors ─────────────────────────────────────────────
 
   test('no critical console errors on dashboard', async ({ page }) => {
