@@ -1,0 +1,46 @@
+name: Supabase Keep-Alive (All Projects)
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    name: Ping all Supabase projects
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping all projects
+        run: |
+          declare -A PROJECTS=(
+            ["BenchmarkSignal"]="https://iplfnausgpexckrrrhov.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwbGZuYXVzZ3BleGNrcnJyaG92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTQxODEsImV4cCI6MjA5MzQ3MDE4MX0.ZtolZ--nwTKhZJeutMDrthrayQXzFb75k4ypnIW0m4Y"
+            ["YouTubeMigration"]="https://ipzqsfljwmkaczpqhhhm.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwenFzZmxqd21rYWN6cHFoaGhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwNjY1MTcsImV4cCI6MjA4NjY0MjUxN30.EJpGPKIaSYYRPuFYBkLGYZCMla-9nmg1EzKnCuGryxM"
+            ["ReplyFlowPrimary"]="https://ujfyieilyrnppriysfml.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqZnlpZWlseXJucHByaXlzZm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzYxNTQsImV4cCI6MjA4ODgxMjE1NH0.4y1KKW5-lFxHZiV6qZr7tkiCXo22huPPpSupT7jilGs"
+            ["ReplyFlowDedicated"]="https://utaqalvziuzrjwucjyjy.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0YXFhbHZ6aXV6cmp3dWNqeWp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMTgwOTksImV4cCI6MjA4ODY5NDA5OX0.n6CesDRUZpRBkklPkqwx1ugDpRPUTwcmlG5KV_vVyHM"
+            ["BackOffice"]="https://xoecpzfsskalvjrtcbbl.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvZWNwemZzc2thbHZqcnRjYmJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDI5MDAsImV4cCI6MjA5MTExODkwMH0.SIdOOrrG5FoTMTmKReGRz0WPMwSENmmr-eYSxAHP7Xw"
+            ["SignalScore"]="https://gomobucktqdnhiprrufw.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdvbW9idWNrdHFkbmhpcHJydWZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3MDM0OTQsImV4cCI6MjA4NzI3OTQ5NH0.r2T4qGiQsSyRnClrH-WOnejNO0YcK5dVnXAc9w2OOKI"
+            ["ScoutCopilot"]="https://rlcsuqwqzoqjykdiqjye.supabase.co|sb_publishable_OJIxBF49Tis6_-nsUSQDQg_IOckCy2S"
+            ["LaunchReady"]="https://hcfeoescybfngjsphekq.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjZmVvZXNjeWJmbmdqc3BoZWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNDY3MzcsImV4cCI6MjA4ODcyMjczN30.Qyj0VH0fQlaRguMLGKhEc8xSN4aWmjfGwTrvZ6HVEkk"
+            ["DistributionOS"]="https://jxjpbmkgmuunpayqgbsx.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4anBibWtnbXV1bnBheXFnYnN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE0MjgsImV4cCI6MjA4OTQxNzQyOH0.6QC2w93bJFYb-aiCvZ_ydC1tm48jXddvdM8mIw5bxBI"
+            ["BelegPilot"]="https://lybpfwzpoiutuqggbixg.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5YnBmd3pwb2l1dHVxZ2diaXhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzOTQyODksImV4cCI6MjA4ODk3MDI4OX0.-HXZcqdxLF1OcXAegTeT5Fkrm6bVSmw0y7JfCGhHuU8"
+            ["Arivioo"]="https://enoghtyawybupvffrofx.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVub2dodHlhd3lidXB2ZmZyb2Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAwNjUxMzQsImV4cCI6MjA4NTY0MTEzNH0.qScxobGg7bj8ehRoZMnDn4pCw3spp7ABkTJvT-slhf0"
+          )
+
+          FAILED=0
+          for name in "${!PROJECTS[@]}"; do
+            IFS='|' read -r url key <<< "${PROJECTS[$name]}"
+            if curl -sf -X POST "${url}/graphql/v1" \
+              -H "Content-Type: application/json" \
+              -H "apikey: ${key}" \
+              -H "Authorization: Bearer ${key}" \
+              -d '{"query":"{ __typename }"}' > /dev/null 2>&1; then
+              echo "OK: ${name}"
+            else
+              echo "FAIL: ${name}"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::warning::${FAILED} project(s) failed keep-alive ping"
+          fi
