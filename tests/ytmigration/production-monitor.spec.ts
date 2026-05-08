@@ -320,6 +320,24 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     ).toBe(true)
   })
 
+  test('CSP connect-src includes correct Supabase ref', async ({ page }) => {
+    const response = await page.goto(SITE_URL, { waitUntil: 'networkidle' })
+
+    const csp = response?.headers()['content-security-policy'] || ''
+    expect(csp).toBeTruthy()
+
+    const connectSrc = csp
+      .split(';')
+      .map((d) => d.trim())
+      .find((d) => d.startsWith('connect-src'))
+
+    expect(connectSrc, 'CSP must contain a connect-src directive').toBeTruthy()
+    expect(
+      connectSrc,
+      'connect-src must include the correct Supabase project ref',
+    ).toContain('ipzqsfljwmkaczpqhhhm.supabase.co')
+  })
+
   test('landing page CTA flow — hero buttons present and Get Started navigates to auth', async ({ page }) => {
     // Landing page is at /landing (unauthenticated public page)
     await page.goto(`${SITE_URL}/landing`)
