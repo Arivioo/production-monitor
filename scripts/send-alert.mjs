@@ -79,6 +79,15 @@ if (existsSync(autoFixPath)) {
   } catch { /* ignore */ }
 }
 
+// Load auto-heal results if available
+let autoHealResults = { healed: [], skipped: [] }
+const autoHealPath = 'auto-heal-results.json'
+if (existsSync(autoHealPath)) {
+  try {
+    autoHealResults = JSON.parse(readFileSync(autoHealPath, 'utf-8'))
+  } catch { /* ignore */ }
+}
+
 // If auto-fix resolved ALL failures, only send a summary (not an alert)
 const hasAutoFixes = autoFixResults.fixes.length > 0
 const allFixed = autoFixResults.escalations.length === 0 && hasAutoFixes
@@ -167,6 +176,21 @@ const html = `
           ${autoFixResults.fixes.map(f => `<tr><td style="padding:8px;border:1px solid #e5e7eb;color:#065f46">${f.detail}</td></tr>`).join('')}
         </tbody>
       </table>` : ''}
+      ${autoHealResults.healed.length > 0 ? `
+      <h3 style="margin:20px 0 12px;font-size:15px;color:#7c3aed">Auto-Healed — Redeploy Triggered (${autoHealResults.healed.length})</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <tbody>
+          ${autoHealResults.healed.map(p => `<tr><td style="padding:8px;border:1px solid #e5e7eb;color:#5b21b6">Triggered redeploy for <strong>${p}</strong></td></tr>`).join('')}
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:#6b7280;margin-top:8px">Sites should recover within 3-5 minutes. Next monitor run will verify.</p>` : ''}
+      ${autoHealResults.skipped.length > 0 ? `
+      <details style="margin-top:12px;font-size:12px;color:#6b7280">
+        <summary>Skipped heals (${autoHealResults.skipped.length})</summary>
+        <ul style="margin:4px 0;padding-left:20px">
+          ${autoHealResults.skipped.map(s => `<li>${s.project}: ${s.reason}</li>`).join('')}
+        </ul>
+      </details>` : ''}
       ${GITHUB_RUN_URL ? `<p style="margin-top:16px"><a href="${GITHUB_RUN_URL}" style="color:#2563eb">View full run logs</a></p>` : ''}
       <p style="margin-top:16px;font-size:12px;color:#6b7280">
         Sent by production-monitor at ${new Date().toISOString()}

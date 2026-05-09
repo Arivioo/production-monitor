@@ -106,6 +106,12 @@ jobs:
           GIT_COMMITTER_NAME: Production Monitor
           GIT_COMMITTER_EMAIL: noreply@predivo.ch
 
+      - name: Auto-heal — redeploy broken sites
+        if: failure()
+        run: node scripts/auto-heal.mjs || true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
       - name: Send alert on failure
         if: failure()
         run: node scripts/send-alert.mjs
