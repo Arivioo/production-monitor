@@ -321,9 +321,11 @@ test.describe('YouTubeMigration — Production Monitor', () => {
   })
 
   test('CSP connect-src includes correct Supabase ref', async () => {
-    // Use Node fetch directly — Playwright's response object sometimes strips headers in CI
-    const res = await fetch(SITE_URL, { redirect: 'follow' })
-    const csp = res.headers.get('content-security-policy') || ''
+    // Use curl via child_process — Playwright and Node fetch both miss headers in GitHub Actions CI
+    const { execSync } = await import('child_process')
+    const headers = execSync(`curl -sI "${SITE_URL}"`, { encoding: 'utf-8' })
+    const cspLine = headers.split('\n').find((l) => l.toLowerCase().startsWith('content-security-policy'))
+    const csp = cspLine ? cspLine.replace(/^[^:]+:\s*/, '').trim() : ''
     expect(csp, 'CSP header or meta tag must be present').toBeTruthy()
 
     const connectSrc = csp
