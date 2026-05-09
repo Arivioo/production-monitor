@@ -116,21 +116,25 @@ const failureRows = failures
   )
   .join('')
 
-// Build auto-fix section for email
-const autoFixSection = hasAutoFixes
-  ? `<div style="background:#059669;color:white;padding:12px 24px;margin-bottom:16px;border-radius:8px">
-      <h3 style="margin:0;font-size:15px">Auto-Fixed (${autoFixResults.fixes.length})</h3>
-      <ul style="margin:8px 0 0;padding-left:20px;font-size:13px;opacity:0.95">
-        ${autoFixResults.fixes.map(f => `<li>${f.detail}</li>`).join('')}
-      </ul>
-    </div>`
-  : ''
+// Build email sections based on scenario
+const totalIssues = failures.length + autoFixResults.fixes.length
+const autoFixCount = autoFixResults.fixes.length
 
-const headerBg = allFixed ? '#059669' : '#dc2626'
-const headerTitle = allFixed ? 'Production Monitor — All Issues Auto-Fixed' : 'Production Monitor Alert'
-const headerSubtitle = allFixed
-  ? `${autoFixResults.fixes.length} issue(s) auto-fixed, committed & pushed`
-  : `${failures.length} test(s) failed across ${Object.keys(projectGroups).length} project(s)`
+// Header: context-aware
+let headerBg, headerTitle, headerSubtitle
+if (allFixed) {
+  headerBg = '#059669'
+  headerTitle = 'Production Monitor — All Issues Auto-Fixed'
+  headerSubtitle = `${autoFixCount} issue(s) detected and resolved automatically. No action needed.`
+} else if (hasAutoFixes) {
+  headerBg = '#f59e0b'
+  headerTitle = 'Production Monitor — Partial Auto-Fix'
+  headerSubtitle = `${autoFixCount} of ${totalIssues} issue(s) auto-fixed. ${failures.length} still need attention.`
+} else {
+  headerBg = '#dc2626'
+  headerTitle = 'Production Monitor Alert'
+  headerSubtitle = `${failures.length} test(s) failed across ${Object.keys(projectGroups).length} project(s)`
+}
 
 const html = `
   <div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto">
@@ -139,17 +143,30 @@ const html = `
       <p style="margin:4px 0 0;font-size:14px;opacity:0.9">${headerSubtitle}</p>
     </div>
     <div style="padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
-      ${autoFixSection}
-      ${allFixed ? '' : `<table style="width:100%;border-collapse:collapse;font-size:13px">
+      ${!allFixed ? `
+      <h3 style="margin:0 0 12px;font-size:15px;color:#dc2626">Needs Attention (${failures.length})</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px">
         <thead>
-          <tr style="background:#f9fafb">
+          <tr style="background:#fef2f2">
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Project</th>
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Test</th>
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Error</th>
           </tr>
         </thead>
         <tbody>${failureRows}</tbody>
-      </table>`}
+      </table>` : ''}
+      ${hasAutoFixes ? `
+      <h3 style="margin:0 0 12px;font-size:15px;color:#059669">Auto-Fixed (${autoFixCount}) — no action needed</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:#f0fdf4">
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">What was fixed</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${autoFixResults.fixes.map(f => `<tr><td style="padding:8px;border:1px solid #e5e7eb;color:#065f46">${f.detail}</td></tr>`).join('')}
+        </tbody>
+      </table>` : ''}
       ${GITHUB_RUN_URL ? `<p style="margin-top:16px"><a href="${GITHUB_RUN_URL}" style="color:#2563eb">View full run logs</a></p>` : ''}
       <p style="margin-top:16px;font-size:12px;color:#6b7280">
         Sent by production-monitor at ${new Date().toISOString()}
@@ -169,8 +186,10 @@ await transporter.sendMail({
   from: `Production Monitor <${SMTP_USER}>`,
   to: ALERT_EMAIL,
   subject: allFixed
-    ? `[AUTO-FIXED] ${autoFixResults.fixes.length} issue(s) resolved automatically`
-    : `[ALERT] ${failures.length} test(s) failed — ${projectSummary}`,
+    ? `[AUTO-FIXED] ${autoFixCount} issue(s) resolved automatically`
+    : hasAutoFixes
+      ? `[PARTIAL FIX] ${failures.length} issue(s) need attention, ${autoFixCount} auto-fixed`
+      : `[ALERT] ${failures.length} test(s) failed — ${projectSummary}`,
   html,
 })
 
