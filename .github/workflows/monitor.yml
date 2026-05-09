@@ -117,6 +117,18 @@ jobs:
           ALERT_EMAIL: roger@mueller.ro
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+      - name: Send resolution email if previous run failed
+        if: success()
+        run: node scripts/send-resolved.mjs
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: roger@mueller.ro
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
