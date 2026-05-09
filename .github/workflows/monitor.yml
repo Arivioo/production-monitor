@@ -97,6 +97,15 @@ jobs:
           # Test user
           TEST_EMAIL: healthcheck-test@predivo.ch
 
+      - name: Auto-fix known failure patterns
+        if: failure()
+        run: node scripts/auto-fix.mjs || true
+        env:
+          GIT_AUTHOR_NAME: Production Monitor
+          GIT_AUTHOR_EMAIL: noreply@predivo.ch
+          GIT_COMMITTER_NAME: Production Monitor
+          GIT_COMMITTER_EMAIL: noreply@predivo.ch
+
       - name: Send alert on failure
         if: failure()
         run: node scripts/send-alert.mjs

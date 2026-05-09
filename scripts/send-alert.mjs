@@ -70,6 +70,31 @@ if (failures.length === 0) {
   failures = [{ project: 'Unknown', test: 'Unknown', error: 'Tests failed but no details available' }]
 }
 
+// Load auto-fix results if available
+let autoFixResults = { fixes: [], escalations: [] }
+const autoFixPath = 'auto-fix-results.json'
+if (existsSync(autoFixPath)) {
+  try {
+    autoFixResults = JSON.parse(readFileSync(autoFixPath, 'utf-8'))
+  } catch { /* ignore */ }
+}
+
+// If auto-fix resolved ALL failures, only send a summary (not an alert)
+const hasAutoFixes = autoFixResults.fixes.length > 0
+const allFixed = autoFixResults.escalations.length === 0 && hasAutoFixes
+
+// Use escalations as the "real" failures if auto-fix ran
+if (hasAutoFixes) {
+  failures = autoFixResults.escalations.length > 0
+    ? autoFixResults.escalations.map(e => ({
+        project: e.project,
+        test: e.test,
+        error: e.error || e.reason || 'Unknown',
+        file: e.file || '',
+      }))
+    : failures
+}
+
 // Group failures by project for summary
 const projectGroups = {}
 for (const f of failures) {
@@ -91,14 +116,31 @@ const failureRows = failures
   )
   .join('')
 
+// Build auto-fix section for email
+const autoFixSection = hasAutoFixes
+  ? `<div style="background:#059669;color:white;padding:12px 24px;margin-bottom:16px;border-radius:8px">
+      <h3 style="margin:0;font-size:15px">Auto-Fixed (${autoFixResults.fixes.length})</h3>
+      <ul style="margin:8px 0 0;padding-left:20px;font-size:13px;opacity:0.95">
+        ${autoFixResults.fixes.map(f => `<li>${f.detail}</li>`).join('')}
+      </ul>
+    </div>`
+  : ''
+
+const headerBg = allFixed ? '#059669' : '#dc2626'
+const headerTitle = allFixed ? 'Production Monitor — All Issues Auto-Fixed' : 'Production Monitor Alert'
+const headerSubtitle = allFixed
+  ? `${autoFixResults.fixes.length} issue(s) auto-fixed, committed & pushed`
+  : `${failures.length} test(s) failed across ${Object.keys(projectGroups).length} project(s)`
+
 const html = `
   <div style="font-family:system-ui,sans-serif;max-width:700px;margin:0 auto">
-    <div style="background:#dc2626;color:white;padding:16px 24px;border-radius:8px 8px 0 0">
-      <h2 style="margin:0;font-size:18px">Production Monitor Alert</h2>
-      <p style="margin:4px 0 0;font-size:14px;opacity:0.9">${failures.length} test(s) failed across ${Object.keys(projectGroups).length} project(s)</p>
+    <div style="background:${headerBg};color:white;padding:16px 24px;border-radius:8px 8px 0 0">
+      <h2 style="margin:0;font-size:18px">${headerTitle}</h2>
+      <p style="margin:4px 0 0;font-size:14px;opacity:0.9">${headerSubtitle}</p>
     </div>
     <div style="padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
+      ${autoFixSection}
+      ${allFixed ? '' : `<table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead>
           <tr style="background:#f9fafb">
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Project</th>
@@ -107,7 +149,7 @@ const html = `
           </tr>
         </thead>
         <tbody>${failureRows}</tbody>
-      </table>
+      </table>`}
       ${GITHUB_RUN_URL ? `<p style="margin-top:16px"><a href="${GITHUB_RUN_URL}" style="color:#2563eb">View full run logs</a></p>` : ''}
       <p style="margin-top:16px;font-size:12px;color:#6b7280">
         Sent by production-monitor at ${new Date().toISOString()}
@@ -126,7 +168,9 @@ const transporter = createTransport({
 await transporter.sendMail({
   from: `Production Monitor <${SMTP_USER}>`,
   to: ALERT_EMAIL,
-  subject: `[ALERT] ${failures.length} test(s) failed — ${projectSummary}`,
+  subject: allFixed
+    ? `[AUTO-FIXED] ${autoFixResults.fixes.length} issue(s) resolved automatically`
+    : `[ALERT] ${failures.length} test(s) failed — ${projectSummary}`,
   html,
 })
 

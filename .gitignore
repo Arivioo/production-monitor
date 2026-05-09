@@ -4,3 +4,4 @@ test-results/
 blob-report/
 .env
 .env.local
+auto-fix-results.json
