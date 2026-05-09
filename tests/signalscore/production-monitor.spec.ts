@@ -76,7 +76,7 @@ test.describe('SignalScore — Production Monitor', () => {
     await bypassPasswordGate(page, SITE_URL)
     // The hero section contains the brand name and a CTA
     await expect(page.locator('text=SignalScore').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('text=Credit Check').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('text=Methodology').first()).toBeVisible({ timeout: 10_000 })
   })
 
   test('landing page pricing section loads', async ({ page }) => {

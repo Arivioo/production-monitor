@@ -120,7 +120,7 @@ test.describe('BelegPilot — Production Monitor', () => {
     await searchInput.fill('')
 
     // Filter buttons are present (Alle is the default active filter)
-    const filterButtons = page.locator('button[aria-current="page"], button:has-text("Alle")')
+    const filterButtons = page.locator('button:has-text("Alle")')
     await expect(filterButtons.first()).toBeVisible({ timeout: 5_000 })
 
     // The document table or empty-state is rendered

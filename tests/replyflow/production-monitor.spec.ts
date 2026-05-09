@@ -419,33 +419,34 @@ test.describe('ReplyFlow — Production Monitor', () => {
       await expect(page.getByRole('link', { name: label }).first()).toBeVisible({ timeout: 10_000 })
     }
 
+    // Helper: click sidebar link with explicit actionability wait
+    const clickNav = async (name: string) => {
+      const link = page.getByRole('link', { name }).first()
+      await expect(link).toBeVisible({ timeout: 10_000 })
+      await link.click({ timeout: 30_000 })
+      await page.waitForLoadState('networkidle')
+    }
+
     // Navigate to Reviews via sidebar link
-    await page.getByRole('link', { name: 'Reviews' }).first().click()
-    await page.waitForLoadState('networkidle')
+    await clickNav('Reviews')
     expect(page.url()).toContain('/app/reviews')
-    // No JS error banner — body must not contain "Something went wrong"
     await expect(page.locator('body')).not.toContainText('Something went wrong', { timeout: 5_000 })
-    // Reviews h1 must be present
     await expect(page.locator('h1', { hasText: 'Reviews' })).toBeVisible({ timeout: 10_000 })
 
     // Navigate to Analytics via sidebar link
-    await page.getByRole('link', { name: 'Analytics' }).first().click()
-    await page.waitForLoadState('networkidle')
+    await clickNav('Analytics')
     expect(page.url()).toContain('/app/analytics')
     await expect(page.locator('body')).not.toContainText('Something went wrong', { timeout: 5_000 })
     await expect(page.locator('h1', { hasText: 'Analytics' })).toBeVisible({ timeout: 10_000 })
 
     // Navigate to Settings via sidebar link
-    await page.getByRole('link', { name: 'Settings' }).first().click()
-    await page.waitForLoadState('networkidle')
+    await clickNav('Settings')
     expect(page.url()).toContain('/app/settings')
     await expect(page.locator('body')).not.toContainText('Something went wrong', { timeout: 5_000 })
-    // Settings renders an sr-only h1; check the profile email field is present instead
     await expect(page.locator('#settings-email')).toBeVisible({ timeout: 15_000 })
 
     // Navigate back to Dashboard via sidebar link
-    await page.getByRole('link', { name: 'Dashboard' }).first().click()
-    await page.waitForLoadState('networkidle')
+    await clickNav('Dashboard')
     expect(page.url()).toMatch(/\/app\/?$/)
     await expect(page.locator('body')).not.toContainText('Something went wrong', { timeout: 5_000 })
     await expect(page.locator('h1', { hasText: 'Dashboard' })).toBeVisible({ timeout: 10_000 })

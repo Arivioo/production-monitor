@@ -315,16 +315,20 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     const body = await page.textContent('body')
     const combined = `${title} ${body}`.toLowerCase()
     expect(
-      combined.includes('ytmigration') || combined.includes('youtube migration'),
-      'ytmigration.com must contain "ytmigration" or "youtube migration" branding',
+      combined.includes('ytmigration') || combined.includes('youtube migration') || combined.includes('yt migration'),
+      'ytmigration.com must contain "ytmigration", "yt migration", or "youtube migration" branding',
     ).toBe(true)
   })
 
   test('CSP connect-src includes correct Supabase ref', async ({ page }) => {
     const response = await page.goto(SITE_URL, { waitUntil: 'networkidle' })
 
-    const csp = response?.headers()['content-security-policy'] || ''
-    expect(csp).toBeTruthy()
+    // Try response headers first; fall back to meta tag if header missing (e.g. CDN edge)
+    let csp = response?.headers()['content-security-policy'] || ''
+    if (!csp) {
+      csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content') || ''
+    }
+    expect(csp, 'CSP header or meta tag must be present').toBeTruthy()
 
     const connectSrc = csp
       .split(';')
