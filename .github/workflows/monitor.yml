@@ -110,7 +110,7 @@ jobs:
         if: failure()
         run: node scripts/auto-heal.mjs || true
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ secrets.DASHBOARD_PAT }}
 
       - name: Send alert on failure
         if: failure()
