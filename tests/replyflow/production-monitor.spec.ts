@@ -413,6 +413,18 @@ test.describe('ReplyFlow — Production Monitor', () => {
     // The sidebar brand label must be visible
     await expect(page.getByText('ReplyFlow').first()).toBeVisible({ timeout: 15_000 })
 
+    // Dismiss any welcome/onboarding dialog that might block navigation
+    const welcomeDialog = page.locator('div[role="dialog"][aria-label*="Welcome"]')
+    if (await welcomeDialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      const closeBtn = welcomeDialog.locator('button:has-text("Skip"), button:has-text("Close"), button:has-text("Got it"), button[aria-label="Close"]').first()
+      if (await closeBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await closeBtn.click()
+      } else {
+        await page.keyboard.press('Escape')
+      }
+      await welcomeDialog.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+    }
+
     // All four nav links must be visible in the sidebar
     const expectedNavLabels = ['Dashboard', 'Reviews', 'Analytics', 'Settings']
     for (const label of expectedNavLabels) {
