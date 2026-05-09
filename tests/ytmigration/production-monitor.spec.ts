@@ -326,7 +326,8 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     // Try response headers first; fall back to meta tag if header missing (e.g. CDN edge)
     let csp = response?.headers()['content-security-policy'] || ''
     if (!csp) {
-      csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content') || ''
+      const meta = page.locator('meta[http-equiv="Content-Security-Policy"]')
+      csp = await meta.getAttribute('content', { timeout: 3_000 }).catch(() => '') || ''
     }
     expect(csp, 'CSP header or meta tag must be present').toBeTruthy()
 
