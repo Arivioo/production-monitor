@@ -323,11 +323,15 @@ test.describe('YouTubeMigration — Production Monitor', () => {
   test('CSP connect-src includes correct Supabase ref', async ({ page }) => {
     const response = await page.goto(SITE_URL, { waitUntil: 'networkidle' })
 
-    // Try response headers first; fall back to meta tag if header missing (e.g. CDN edge)
+    // Try response headers first; fall back to meta tag; then direct fetch (Playwright sometimes misses headers)
     let csp = response?.headers()['content-security-policy'] || ''
     if (!csp) {
       const meta = page.locator('meta[http-equiv="Content-Security-Policy"]')
       csp = await meta.getAttribute('content', { timeout: 3_000 }).catch(() => '') || ''
+    }
+    if (!csp) {
+      const direct = await page.request.get(SITE_URL)
+      csp = direct.headers()['content-security-policy'] || ''
     }
     expect(csp, 'CSP header or meta tag must be present').toBeTruthy()
 
