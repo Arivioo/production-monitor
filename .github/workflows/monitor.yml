@@ -82,6 +82,13 @@ jobs:
           APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}
           APIS_SERVICE_ROLE_KEY: ${{ secrets.APIS_SERVICE_ROLE_KEY }}
           APIS_ANON_KEY: ${{ secrets.APIS_ANON_KEY }}
+          # Keep-alive only (no production site)
+          JASSTOUR_SUPABASE_URL: ${{ secrets.JASSTOUR_SUPABASE_URL }}
+          JASSTOUR_ANON_KEY: ${{ secrets.JASSTOUR_ANON_KEY }}
+          CRYPTOTRADING_SUPABASE_URL: ${{ secrets.CRYPTOTRADING_SUPABASE_URL }}
+          CRYPTOTRADING_ANON_KEY: ${{ secrets.CRYPTOTRADING_ANON_KEY }}
+          SIGNALFORGE_SUPABASE_URL: ${{ secrets.SIGNALFORGE_SUPABASE_URL }}
+          SIGNALFORGE_ANON_KEY: ${{ secrets.SIGNALFORGE_ANON_KEY }}
           # IMAP (for E2E OTP email reading)
           IMAP_HOST: ${{ secrets.IMAP_HOST }}
           IMAP_PORT: '993'
