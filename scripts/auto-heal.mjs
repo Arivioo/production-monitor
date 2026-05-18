@@ -20,7 +20,7 @@ const COOLDOWN_MS = 6 * 60 * 60 * 1000 // 6 hours
 
 // Project → GitHub repo + workflow file + deploy branch
 const PROJECT_CONFIG = {
-  BenchmarkSignal: { repo: 'Arivioo/BenchmarkSignal', workflow: 'deploy.yml', branch: 'main' },
+  Valrano: { repo: 'Arivioo/Valrano', workflow: 'deploy.yml', branch: 'main' },
   BackOffice: { repo: 'Arivioo/BackOffice', workflow: 'deploy.yml', branch: 'main' },
   ScoutCopilot: { repo: 'Arivioo/ScoutCopilot', workflow: 'deploy.yml', branch: 'main' },
   YouTubeMigration: { repo: 'Arivioo/youtube-migration', workflow: 'deploy.yml', branch: 'main' },

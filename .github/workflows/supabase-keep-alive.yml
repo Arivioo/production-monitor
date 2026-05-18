@@ -13,7 +13,7 @@ jobs:
       - name: Ping all projects
         run: |
           declare -A PROJECTS=(
-            ["BenchmarkSignal"]="https://iplfnausgpexckrrrhov.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwbGZuYXVzZ3BleGNrcnJyaG92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTQxODEsImV4cCI6MjA5MzQ3MDE4MX0.ZtolZ--nwTKhZJeutMDrthrayQXzFb75k4ypnIW0m4Y"
+            ["Valrano"]="https://mkdeftmubrkseyrrbzvp.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZGVmdG11YnJrc2V5cnJienZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MTIzODIsImV4cCI6MjA5Mzk4ODM4Mn0.lnNUslHt--2_GzOZFB_UH1mVd0bfGfWTnHIU3e7Umwc"
             ["YouTubeMigration"]="https://ipzqsfljwmkaczpqhhhm.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwenFzZmxqd21rYWN6cHFoaGhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEwNjY1MTcsImV4cCI6MjA4NjY0MjUxN30.EJpGPKIaSYYRPuFYBkLGYZCMla-9nmg1EzKnCuGryxM"
             ["ReplyFlowPrimary"]="https://ujfyieilyrnppriysfml.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqZnlpZWlseXJucHByaXlzZm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzYxNTQsImV4cCI6MjA4ODgxMjE1NH0.4y1KKW5-lFxHZiV6qZr7tkiCXo22huPPpSupT7jilGs"
             ["ReplyFlowDedicated"]="https://utaqalvziuzrjwucjyjy.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0YXFhbHZ6aXV6cmp3dWNqeWp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMTgwOTksImV4cCI6MjA4ODY5NDA5OX0.n6CesDRUZpRBkklPkqwx1ugDpRPUTwcmlG5KV_vVyHM"

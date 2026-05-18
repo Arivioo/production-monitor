@@ -337,7 +337,7 @@ function resolveProjectDir(projectName) {
     Arivioo: 'arivioo',
     LaunchReady: 'launchready',
     SignalScore: 'signalscore',
-    BenchmarkSignal: 'benchmarksignal',
+    Valrano: 'valrano',
   }
   const dir = map[projectName]
   if (!dir) return null
