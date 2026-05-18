@@ -75,8 +75,8 @@ jobs:
           SIGNALSCORE_ANON_KEY: ${{ secrets.SIGNALSCORE_ANON_KEY }}
           # Predivo
           PREDIVO_URL: https://predivo.ch
-          # BenchmarkSignal
-          BENCHMARKSIGNAL_URL: https://benchmarksignal.predivo.ch
+          # Valrano
+          VALRANO_URL: https://valrano.com
           # APIs (predivo.ch)
           APIS_URL: https://predivo.ch
           APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}

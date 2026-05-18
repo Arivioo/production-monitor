@@ -24,7 +24,7 @@ test.describe('APIs (predivo.ch) — Production Monitor', () => {
     const combined = `${title} ${body}`.toLowerCase()
     expect(combined, 'predivo.ch must contain "predivo" branding').toContain('predivo')
     // Guard: must NOT show another project's branding as primary content
-    expect(title.toLowerCase(), 'Title must not be hijacked by another project').not.toContain('benchmarksignal')
+    expect(title.toLowerCase(), 'Title must not be hijacked by another project').not.toContain('valrano')
     expect(title.toLowerCase(), 'Title must not be hijacked by another project').not.toContain('signalscore')
     expect(title.toLowerCase(), 'Title must not be hijacked by another project').not.toContain('shipsolo')
   })

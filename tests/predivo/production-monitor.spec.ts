@@ -17,7 +17,7 @@ test.describe('Predivo — Production Monitor', () => {
     const body = await page.textContent('body')
     const combined = `${title} ${body}`.toLowerCase()
     expect(combined, 'predivo.ch must contain "predivo" branding').toContain('predivo')
-    expect(title.toLowerCase(), 'Title must not be hijacked').not.toContain('benchmarksignal')
+    expect(title.toLowerCase(), 'Title must not be hijacked').not.toContain('valrano')
     expect(title.toLowerCase(), 'Title must not be hijacked').not.toContain('signalscore')
   })
 
