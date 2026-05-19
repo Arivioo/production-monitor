@@ -159,14 +159,14 @@ fi
 # --- Push data.json ---
 echo ""
 echo "Updating data.json (${CHANGES} commit changes)..."
-ENCODED_DATA=$(echo "$UPDATED_DATA" | jq '.' | base64 -w 0)
+echo "$UPDATED_DATA" | jq '.' | base64 -w 0 > /tmp/encoded-data.txt
 
 jq -n \
   --arg message "chore: daily auto-update project stats (${TODAY})" \
-  --arg content "$ENCODED_DATA" \
+  --rawfile content /tmp/encoded-data.txt \
   --arg sha "$DATA_SHA" \
   --arg branch "main" \
-  '{message: $message, content: $content, sha: $sha, branch: $branch}' \
+  '{message: $message, content: ($content | rtrimstr("\n")), sha: $sha, branch: $branch}' \
   > /tmp/data-payload.json
 
 gh api "repos/${OWNER}/${DASHBOARD_REPO}/contents/data.json" \
@@ -174,28 +174,28 @@ gh api "repos/${OWNER}/${DASHBOARD_REPO}/contents/data.json" \
   --input /tmp/data-payload.json \
   > /dev/null
 
-rm -f /tmp/data-payload.json
+rm -f /tmp/data-payload.json /tmp/encoded-data.txt
 echo "data.json updated in repo."
 
 # --- Push changelog.json ---
 if [ "$CHANGES" -gt 0 ]; then
   echo "Updating changelog.json..."
-  ENCODED_CHANGELOG=$(echo "$CHANGELOG" | jq '.' | base64 -w 0)
+  echo "$CHANGELOG" | jq '.' | base64 -w 0 > /tmp/encoded-changelog.txt
 
   if [ -n "$CHANGELOG_SHA" ]; then
     jq -n \
       --arg message "chore: daily changelog (${TODAY})" \
-      --arg content "$ENCODED_CHANGELOG" \
+      --rawfile content /tmp/encoded-changelog.txt \
       --arg sha "$CHANGELOG_SHA" \
       --arg branch "main" \
-      '{message: $message, content: $content, sha: $sha, branch: $branch}' \
+      '{message: $message, content: ($content | rtrimstr("\n")), sha: $sha, branch: $branch}' \
       > /tmp/changelog-payload.json
   else
     jq -n \
       --arg message "chore: daily changelog (${TODAY})" \
-      --arg content "$ENCODED_CHANGELOG" \
+      --rawfile content /tmp/encoded-changelog.txt \
       --arg branch "main" \
-      '{message: $message, content: $content, branch: $branch}' \
+      '{message: $message, content: ($content | rtrimstr("\n")), branch: $branch}' \
       > /tmp/changelog-payload.json
   fi
 
@@ -204,7 +204,7 @@ if [ "$CHANGES" -gt 0 ]; then
     --input /tmp/changelog-payload.json \
     > /dev/null
 
-  rm -f /tmp/changelog-payload.json
+  rm -f /tmp/changelog-payload.json /tmp/encoded-changelog.txt
   echo "changelog.json updated."
 fi
 
