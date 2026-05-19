@@ -161,14 +161,20 @@ echo ""
 echo "Updating data.json (${CHANGES} commit changes)..."
 ENCODED_DATA=$(echo "$UPDATED_DATA" | jq '.' | base64 -w 0)
 
+jq -n \
+  --arg message "chore: daily auto-update project stats (${TODAY})" \
+  --arg content "$ENCODED_DATA" \
+  --arg sha "$DATA_SHA" \
+  --arg branch "main" \
+  '{message: $message, content: $content, sha: $sha, branch: $branch}' \
+  > /tmp/data-payload.json
+
 gh api "repos/${OWNER}/${DASHBOARD_REPO}/contents/data.json" \
   --method PUT \
-  --field message="chore: daily auto-update project stats (${TODAY})" \
-  --field content="$ENCODED_DATA" \
-  --field sha="$DATA_SHA" \
-  --field branch="main" \
+  --input /tmp/data-payload.json \
   > /dev/null
 
+rm -f /tmp/data-payload.json
 echo "data.json updated in repo."
 
 # --- Push changelog.json ---
@@ -177,21 +183,28 @@ if [ "$CHANGES" -gt 0 ]; then
   ENCODED_CHANGELOG=$(echo "$CHANGELOG" | jq '.' | base64 -w 0)
 
   if [ -n "$CHANGELOG_SHA" ]; then
-    gh api "repos/${OWNER}/${DASHBOARD_REPO}/contents/changelog.json" \
-      --method PUT \
-      --field message="chore: daily changelog (${TODAY})" \
-      --field content="$ENCODED_CHANGELOG" \
-      --field sha="$CHANGELOG_SHA" \
-      --field branch="main" \
-      > /dev/null
+    jq -n \
+      --arg message "chore: daily changelog (${TODAY})" \
+      --arg content "$ENCODED_CHANGELOG" \
+      --arg sha "$CHANGELOG_SHA" \
+      --arg branch "main" \
+      '{message: $message, content: $content, sha: $sha, branch: $branch}' \
+      > /tmp/changelog-payload.json
   else
-    gh api "repos/${OWNER}/${DASHBOARD_REPO}/contents/changelog.json" \
-      --method PUT \
-      --field message="chore: daily changelog (${TODAY})" \
-      --field content="$ENCODED_CHANGELOG" \
-      --field branch="main" \
-      > /dev/null
+    jq -n \
+      --arg message "chore: daily changelog (${TODAY})" \
+      --arg content "$ENCODED_CHANGELOG" \
+      --arg branch "main" \
+      '{message: $message, content: $content, branch: $branch}' \
+      > /tmp/changelog-payload.json
   fi
+
+  gh api "repos/${OWNER}/${DASHBOARD_REPO}/contents/changelog.json" \
+    --method PUT \
+    --input /tmp/changelog-payload.json \
+    > /dev/null
+
+  rm -f /tmp/changelog-payload.json
   echo "changelog.json updated."
 fi
 
