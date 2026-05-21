@@ -727,7 +727,7 @@ test.describe('BackOffice — Production Monitor', () => {
       await expect(page.locator('text=SMTP-Verbindung').first()).toBeVisible({ timeout: 10_000 })
 
       // At least one project card must be visible in the grid
-      const projectCards = page.locator('.grid .rounded-lg').filter({ hasText: /predivo|backoffice|shipsolo|ytmigration|valrano|signalscore|replyflow|scoutcopilot|arivioo/i })
+      const projectCards = page.locator('.grid .rounded-lg').filter({ hasText: /backoffice|channelmover|valrano|signalscore|replyflow|scoutcopilot|launchready/i })
       const cardCount = await projectCards.count()
       expect(cardCount, 'At least one project card should be visible').toBeGreaterThan(0)
     }
