@@ -8,10 +8,6 @@ const ANON_KEY = process.env.ARIVIOO_ANON_KEY!
 const TEST_EMAIL = process.env.TEST_EMAIL || 'healthcheck-test@predivo.ch'
 
 test.describe('Arivioo — Production Monitor', () => {
-  test.beforeAll(async () => {
-    await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
-  })
-
   test('landing page loads', async ({ page }) => {
     await page.goto(SITE_URL)
     await page.waitForLoadState('networkidle')
@@ -19,6 +15,7 @@ test.describe('Arivioo — Production Monitor', () => {
   })
 
   test('full login works and dashboard loads', async ({ page }) => {
+    await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
     await loginViaMagicLink(page, {
       supabaseUrl: SUPABASE_URL,
       serviceRoleKey: SERVICE_ROLE_KEY,

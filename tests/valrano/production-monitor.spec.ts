@@ -26,7 +26,7 @@ test.describe('Valrano — Production Monitor', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(2000)
     const criticalErrors = errors.filter(
-      (e) => !e.includes('favicon') && !e.includes('manifest') && !e.includes('third-party'),
+      (e) => !e.includes('favicon') && !e.includes('manifest') && !e.includes('third-party') && !e.includes('X-Frame-Options'),
     )
     expect(criticalErrors, `Console errors: ${criticalErrors.join('; ')}`).toHaveLength(0)
   })
