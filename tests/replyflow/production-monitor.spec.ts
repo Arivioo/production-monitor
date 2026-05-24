@@ -248,9 +248,9 @@ test.describe('ReplyFlow — Production Monitor', () => {
     const heading = page.locator('h1', { hasText: 'Reviews' })
     await expect(heading).toBeVisible({ timeout: 15_000 })
 
-    // All five status tabs must be present
+    // All five status tabs must be present (role="tab" after a11y audit)
     for (const label of ['All', 'Needs Reply', 'Draft Ready', 'Edited', 'Posted']) {
-      await expect(page.getByRole('button', { name: new RegExp(label, 'i') }).first()).toBeVisible({ timeout: 10_000 })
+      await expect(page.getByRole('tab', { name: new RegExp(label, 'i') }).first()).toBeVisible({ timeout: 10_000 })
     }
 
     // Rating and sort dropdowns must be rendered
@@ -268,13 +268,13 @@ test.describe('ReplyFlow — Production Monitor', () => {
     await expect(sortSelect).toHaveValue('newest')
 
     // Click the "Needs Reply" status tab
-    await page.getByRole('button', { name: /Needs Reply/i }).first().click()
+    await page.getByRole('tab', { name: /Needs Reply/i }).first().click()
     // The right panel should show the placeholder when nothing is selected, or reviews are visible
     const rightPanel = page.locator('text=/Select a review to view details|No reviews match/i').first()
     await expect(rightPanel).toBeVisible({ timeout: 10_000 })
 
     // Click "All" tab to reset
-    await page.getByRole('button', { name: /^All\s/i }).first().click()
+    await page.getByRole('tab', { name: /^All/i }).first().click()
 
     // If any review rows exist, click the first one and verify detail panel opens
     const firstReviewBtn = page.locator('[aria-label^="Review from"]').first()

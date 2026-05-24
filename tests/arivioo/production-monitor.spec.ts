@@ -15,6 +15,7 @@ test.describe('Arivioo — Production Monitor', () => {
   })
 
   test('full login works and dashboard loads', async ({ page }) => {
+    test.skip(!SUPABASE_URL, 'ARIVIOO_SUPABASE_URL not configured — Supabase project paused')
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
     await loginViaMagicLink(page, {
       supabaseUrl: SUPABASE_URL,

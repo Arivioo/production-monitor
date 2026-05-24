@@ -80,19 +80,20 @@ test.describe('BackOffice — Production Monitor', () => {
 
     // 4. Wait for OTP step — either OTP inputs appear or an error about rate limiting
     const otpGroup = page.locator('[role="group"][aria-label="Bestätigungscode"]')
-    const errorMsg = page.locator('text=/5 seconds|rate limit/i')
+    const errorMsg = page.locator('text=/seconds|rate limit|security purposes|Fehler/i')
     const result = await Promise.race([
       otpGroup.waitFor({ timeout: 20_000 }).then(() => 'otp' as const),
       errorMsg.waitFor({ timeout: 20_000 }).then(() => 'ratelimit' as const),
     ]).catch(() => 'timeout' as const)
     if (result === 'ratelimit') {
-      // Wait and retry the OTP request
-      await new Promise((r) => setTimeout(r, 6000))
+      // Wait for Supabase cooldown (up to 60s) and retry
+      await new Promise((r) => setTimeout(r, 12_000))
+      await emailInput.fill(OTP_TEST_EMAIL)
       await page.locator('button[type="submit"]').click()
-      await expect(otpGroup).toBeVisible({ timeout: 20_000 })
+      await expect(otpGroup).toBeVisible({ timeout: 30_000 })
     } else if (result === 'timeout') {
       // Fallback: check if OTP group appeared anyway
-      await expect(otpGroup).toBeVisible({ timeout: 5_000 })
+      await expect(otpGroup).toBeVisible({ timeout: 10_000 })
     }
 
     // 5. Read OTP email from IMAP

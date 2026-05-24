@@ -113,14 +113,14 @@ test.describe('YouTubeMigration — Production Monitor', () => {
   })
 
   test('comparison page loads (not 404)', async ({ page }) => {
-    const response = await page.goto(`${SITE_URL}/compare/yt-migration-vs-google-takeout`)
+    const response = await page.goto(`${SITE_URL}/compare/channelmover-vs-google-takeout`)
     await page.waitForLoadState('networkidle')
 
     expect(response?.status()).not.toBe(404)
 
     const body = page.locator('body')
     await expect(body).not.toBeEmpty()
-    await expect(body).toContainText(/takeout|compare|migration/i)
+    await expect(body).toContainText(/takeout|compare|migration|transfer|channelmover/i)
   })
 
   test('auth login page loads', async ({ page }) => {
@@ -254,7 +254,7 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     // After click, should navigate toward auth login (Google OAuth page)
     await page.waitForLoadState('networkidle')
     const urlAfterClick = page.url()
-    expect(urlAfterClick).toMatch(/auth\/login|accounts\.google|ytmigration\.com/)
+    expect(urlAfterClick).toMatch(/auth\/login|accounts\.google|channelmover\.com/)
   })
 
   test('extension page interaction — Chrome extension info sections and browser compatibility', async ({ page }) => {
@@ -309,14 +309,14 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     await expect(body).toContainText(/migration/i)
   })
 
-  test('site identity — title contains ytmigration or youtube migration', async ({ page }) => {
+  test('site identity — title contains channelmover branding', async ({ page }) => {
     await page.goto(SITE_URL, { waitUntil: 'networkidle' })
     const title = await page.title()
     const body = await page.textContent('body')
     const combined = `${title} ${body}`.toLowerCase()
     expect(
-      combined.includes('ytmigration') || combined.includes('youtube migration') || combined.includes('yt migration'),
-      'ytmigration.com must contain "ytmigration", "yt migration", or "youtube migration" branding',
+      combined.includes('channelmover') || combined.includes('channel mover'),
+      'channelmover.com must contain "channelmover" branding',
     ).toBe(true)
   })
 
@@ -337,7 +337,7 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     expect(
       connectSrc,
       'connect-src must include the correct Supabase project ref',
-    ).toContain('ipzqsfljwmkaczpqhhhm.supabase.co')
+    ).toContain('qswluvqunswggfmesdcs.supabase.co')
   })
 
   test('landing page CTA flow — hero buttons present and Get Started navigates to auth', async ({ page }) => {
@@ -370,6 +370,6 @@ test.describe('YouTubeMigration — Production Monitor', () => {
 
     // Should navigate to /auth/login (Google OAuth sign-in page)
     const urlAfter = page.url()
-    expect(urlAfter).toMatch(/auth\/login|accounts\.google|ytmigration\.com/)
+    expect(urlAfter).toMatch(/auth\/login|accounts\.google|channelmover\.com/)
   })
 })
