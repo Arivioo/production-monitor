@@ -330,7 +330,7 @@ function resolveProjectDir(projectName) {
     BackOffice: 'backoffice',
     Predivo: 'predivo',
     ReplyFlow: 'replyflow',
-    YouTubeMigration: 'ytmigration',
+    ChannelMover: 'ytmigration',
     ScoutCopilot: 'scoutcopilot',
     ShipSolo: 'shipsolo',
     BelegPilot: 'belegpilot',

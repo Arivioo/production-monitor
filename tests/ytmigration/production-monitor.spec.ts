@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
 
-const SITE_URL = process.env.YTMIGRATION_URL || 'https://ytmigration.com'
+const SITE_URL = process.env.YTMIGRATION_URL || 'https://channelmover.com'
 const SUPABASE_URL = process.env.YTMIGRATION_SUPABASE_URL!
 const SERVICE_ROLE_KEY = process.env.YTMIGRATION_SERVICE_ROLE_KEY!
 const ANON_KEY = process.env.YTMIGRATION_ANON_KEY!
 const TEST_EMAIL = process.env.TEST_EMAIL || 'healthcheck-test@predivo.ch'
 
-test.describe('YouTubeMigration — Production Monitor', () => {
+test.describe('ChannelMover — Production Monitor', () => {
   test.beforeAll(async () => {
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
   })
@@ -126,7 +126,7 @@ test.describe('YouTubeMigration — Production Monitor', () => {
   test('auth login page loads', async ({ page }) => {
     await page.goto(`${SITE_URL}/auth/login`)
     await page.waitForLoadState('networkidle')
-    // YTMigration uses Google OAuth — verify the page loads with sign-in content
+    // ChannelMover uses Google OAuth — verify the page loads with sign-in content
     await expect(page.locator('body')).not.toBeEmpty()
     const text = await page.locator('body').textContent()
     expect((text || '').length).toBeGreaterThan(50)
@@ -371,5 +371,81 @@ test.describe('YouTubeMigration — Production Monitor', () => {
     // Should navigate to /auth/login (Google OAuth sign-in page)
     const urlAfter = page.url()
     expect(urlAfter).toMatch(/auth\/login|accounts\.google|channelmover\.com/)
+  })
+
+  // ── Edge function reachability — catches missing deploys after migration ──
+
+  test('send-auth-email edge function is reachable', async ({ request }) => {
+    const response = await request.fetch(
+      `${SUPABASE_URL}/functions/v1/send-auth-email`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        data: {},
+      }
+    )
+    const status = response.status()
+    expect(
+      status !== 404 && status !== 500,
+      `send-auth-email returned ${status} — not deployed or crashed`
+    ).toBe(true)
+  })
+
+  test.describe('Edge Functions Reachable', () => {
+    const ALL_EDGE_FUNCTIONS = [
+      'ai-analyze',
+      'ai-categorize',
+      'ai-chat',
+      'capture-youtube-cookies',
+      'check-channel-status',
+      'clean-account-worker',
+      'cleanup-old-data',
+      'connect-youtube-account',
+      'create-checkout-session',
+      'delete-account',
+      'disconnect-youtube-account',
+      'encrypt-existing-tokens',
+      'extension-playlist-bridge',
+      'innertube-auth-poll',
+      'innertube-auth-start',
+      'migrate-liked-videos',
+      'migrate-playlists',
+      'migrate-subscriptions',
+      'migrate-watch-history',
+      'migrate-watch-later',
+      'migration-watchdog',
+      'process-migration-queue',
+      'process-takeout',
+      'refresh-youtube-token',
+      'restart-migration',
+      'resume-migration',
+      'rollback-migration',
+      'save-youtube-cookies',
+      'scan-clean-account',
+      'scan-source-account',
+      'send-auth-email',
+      'start-clean-account',
+      'start-migration',
+      'stripe-webhook',
+    ]
+
+    for (const fn of ALL_EDGE_FUNCTIONS) {
+      test(`edge function ${fn} is deployed`, async ({ request }) => {
+        const response = await request.fetch(
+          `${SUPABASE_URL}/functions/v1/${fn}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            data: {},
+          }
+        )
+        const status = response.status()
+        // 200/400/401/403 = function exists. 404 = NOT deployed. 500 = crashed.
+        expect(
+          status !== 404 && status !== 500,
+          `Edge function "${fn}" returned ${status} — not deployed or crashed`
+        ).toBe(true)
+      })
+    }
   })
 })

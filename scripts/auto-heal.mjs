@@ -23,7 +23,7 @@ const PROJECT_CONFIG = {
   Valrano: { repo: 'Arivioo/Valrano', workflow: 'deploy.yml', branch: 'main' },
   BackOffice: { repo: 'Arivioo/BackOffice', workflow: 'deploy.yml', branch: 'main' },
   ScoutCopilot: { repo: 'Arivioo/ScoutCopilot', workflow: 'deploy.yml', branch: 'main' },
-  YouTubeMigration: { repo: 'Arivioo/youtube-migration', workflow: 'deploy.yml', branch: 'main' },
+  ChannelMover: { repo: 'Arivioo/ChannelMover', workflow: 'deploy.yml', branch: 'main' },
   ReplyFlow: { repo: 'Arivioo/replyflow', workflow: 'deploy.yml', branch: 'main' },
   ShipSolo: { repo: 'Arivioo/Distribution-OS', workflow: 'deploy.yml', branch: 'main' },
   BelegPilot: { repo: 'Arivioo/BelegPilot', workflow: 'deploy.yml', branch: 'main' },

@@ -20,7 +20,7 @@ function getProjects(): SupabaseProject[] {
   const mapping: Record<string, { urlEnv: string; keyEnv: string }> = {
     'BackOffice':      { urlEnv: 'BACKOFFICE_SUPABASE_URL',    keyEnv: 'BACKOFFICE_ANON_KEY' },
     'ScoutCopilot':    { urlEnv: 'SCOUTCOPILOT_SUPABASE_URL',  keyEnv: 'SCOUTCOPILOT_ANON_KEY' },
-    'YTMigration':     { urlEnv: 'YTMIGRATION_SUPABASE_URL',   keyEnv: 'YTMIGRATION_ANON_KEY' },
+    'ChannelMover':    { urlEnv: 'YTMIGRATION_SUPABASE_URL',   keyEnv: 'YTMIGRATION_ANON_KEY' },
     'ReplyFlow':       { urlEnv: 'REPLYFLOW_SUPABASE_URL',     keyEnv: 'REPLYFLOW_ANON_KEY' },
     'ShipSolo':        { urlEnv: 'SHIPSOLO_SUPABASE_URL',      keyEnv: 'SHIPSOLO_ANON_KEY' },
     'BelegPilot':      { urlEnv: 'BELEGPILOT_SUPABASE_URL',    keyEnv: 'BELEGPILOT_ANON_KEY' },

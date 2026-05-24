@@ -406,6 +406,64 @@ test.describe('ReplyFlow — Production Monitor', () => {
     expect(combined, 'replyflow.help must contain "replyflow" branding').toContain('replyflow')
   })
 
+  // ── Edge function reachability — catches missing deploys after migration ──
+
+  test('send-auth-email edge function is reachable', async ({ request }) => {
+    const response = await request.fetch(
+      `${SUPABASE_URL}/functions/v1/send-auth-email`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        data: {},
+      }
+    )
+    const status = response.status()
+    expect(
+      status !== 404 && status !== 500,
+      `send-auth-email returned ${status} — not deployed or crashed`
+    ).toBe(true)
+  })
+
+  test.describe('Edge Functions Reachable', () => {
+    const ALL_EDGE_FUNCTIONS = [
+      'connect-platform',
+      'create-billing-portal',
+      'create-checkout',
+      'delete-account',
+      'disconnect-platform',
+      'fetch-reviews',
+      'generate-reply',
+      'post-reply',
+      'process-queue',
+      'refresh-tokens',
+      'schedule-review-sync',
+      'send-auth-email',
+      'send-review-alert',
+      'send-weekly-digest',
+      'send-welcome',
+      'stripe-webhook',
+    ]
+
+    for (const fn of ALL_EDGE_FUNCTIONS) {
+      test(`edge function ${fn} is deployed`, async ({ request }) => {
+        const response = await request.fetch(
+          `${SUPABASE_URL}/functions/v1/${fn}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            data: {},
+          }
+        )
+        const status = response.status()
+        // 200/400/401/403 = function exists. 404 = NOT deployed. 500 = crashed.
+        expect(
+          status !== 404 && status !== 500,
+          `Edge function "${fn}" returned ${status} — not deployed or crashed`
+        ).toBe(true)
+      })
+    }
+  })
+
   test('navigation flow — sidebar has all nav items, clicking each loads the correct page without errors', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_OPTS())
     await page.goto(`${SITE_URL}/app`, { waitUntil: 'networkidle' })

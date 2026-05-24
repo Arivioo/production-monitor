@@ -38,7 +38,7 @@ jobs:
           SCOUTCOPILOT_SUPABASE_URL: ${{ secrets.SCOUTCOPILOT_SUPABASE_URL }}
           SCOUTCOPILOT_SERVICE_ROLE_KEY: ${{ secrets.SCOUTCOPILOT_SERVICE_ROLE_KEY }}
           SCOUTCOPILOT_ANON_KEY: ${{ secrets.SCOUTCOPILOT_ANON_KEY }}
-          # YouTubeMigration
+          # ChannelMover
           YTMIGRATION_URL: https://channelmover.com
           YTMIGRATION_SUPABASE_URL: ${{ secrets.YTMIGRATION_SUPABASE_URL }}
           YTMIGRATION_SERVICE_ROLE_KEY: ${{ secrets.YTMIGRATION_SERVICE_ROLE_KEY }}
@@ -77,6 +77,7 @@ jobs:
           PREDIVO_URL: https://predivo.ch
           # Valrano
           VALRANO_URL: https://valrano.com
+          VALRANO_SUPABASE_URL: ${{ secrets.VALRANO_SUPABASE_URL }}
           # APIs (predivo.ch)
           APIS_URL: https://predivo.ch
           APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}

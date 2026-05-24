@@ -384,4 +384,62 @@ test.describe('SignalScore — Production Monitor', () => {
     // Disclaimer banner at the bottom
     await expect(page.locator('h3:has-text("Important Limitations")')).toBeVisible({ timeout: 10_000 })
   })
+
+  // ── Edge function reachability — catches missing deploys after migration ──
+
+  test('send-auth-email edge function is reachable', async ({ request }) => {
+    const response = await request.fetch(
+      `${SUPABASE_URL}/functions/v1/send-auth-email`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        data: {},
+      }
+    )
+    const status = response.status()
+    expect(
+      status !== 404 && status !== 500,
+      `send-auth-email returned ${status} — not deployed or crashed`
+    ).toBe(true)
+  })
+
+  test.describe('Edge Functions Reachable', () => {
+    const ALL_EDGE_FUNCTIONS = [
+      'analyze-report',
+      'api-v1',
+      'check-usage',
+      'create-checkout-session',
+      'delete-account',
+      'generate-pdf',
+      'get-company-officers',
+      'invite-member',
+      'manage-api-keys',
+      'manage-subscription',
+      'remove-member',
+      'run-credit-check',
+      'search-companies',
+      'send-auth-email',
+      'shab-monitor',
+      'stripe-webhook',
+    ]
+
+    for (const fn of ALL_EDGE_FUNCTIONS) {
+      test(`edge function ${fn} is deployed`, async ({ request }) => {
+        const response = await request.fetch(
+          `${SUPABASE_URL}/functions/v1/${fn}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            data: {},
+          }
+        )
+        const status = response.status()
+        // 200/400/401/403 = function exists. 404 = NOT deployed. 500 = crashed.
+        expect(
+          status !== 404 && status !== 500,
+          `Edge function "${fn}" returned ${status} — not deployed or crashed`
+        ).toBe(true)
+      })
+    }
+  })
 })
