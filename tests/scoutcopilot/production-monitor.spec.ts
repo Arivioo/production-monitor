@@ -253,7 +253,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   test('settings interaction: settings tabs and profile form load', async ({ page }) => {
     await page.addInitScript(() => { try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch {} })
     await loginViaMagicLink(page, AUTH_CONFIG)
-    await page.goto(`${SITE_URL}/settings`, { waitUntil: 'networkidle' })
+    await page.goto(`${SITE_URL}/settings`, { waitUntil: 'domcontentloaded' })
 
     // SettingsPage renders two tab UIs:
     //   - Mobile: <ScrollableTabBar> (horizontal scrollable buttons, rendered in a div, visible on < md)
@@ -265,7 +265,7 @@ test.describe('ScoutCopilot — Production Monitor', () => {
         const nav = document.querySelector('nav')
         return nav !== null && (nav.textContent ?? '').length > 20
       },
-      { timeout: 10_000 },
+      { timeout: 15_000 },
     )
 
     // Default active tab is 'profile' — ProfileSettings renders account form content

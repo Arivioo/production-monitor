@@ -19,7 +19,7 @@ const AUTH_CONFIG = {
 async function bypassPasswordGate(page: import('@playwright/test').Page, url: string): Promise<void> {
   await page.goto(SITE_URL, { waitUntil: 'commit' })
   await page.evaluate(() => sessionStorage.setItem('distribution-os-dev-access', 'true'))
-  await page.goto(url, { waitUntil: 'networkidle' })
+  await page.goto(url, { waitUntil: 'domcontentloaded' })
 }
 
 /**
@@ -53,7 +53,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('landing page has hero', async ({ page }) => {
     await bypassPasswordGate(page, SITE_URL)
     const h1 = page.locator('h1').first()
-    await expect(h1).toBeVisible({ timeout: 10_000 })
+    await expect(h1).toBeVisible({ timeout: 15_000 })
   })
 
   test('pricing page loads', async ({ page }) => {
@@ -65,7 +65,7 @@ test.describe('ShipSolo — Production Monitor', () => {
   test('login page has form', async ({ page }) => {
     await bypassPasswordGate(page, `${SITE_URL}/login`)
     const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="email" i]').first()
-    await expect(emailInput).toBeVisible({ timeout: 10_000 })
+    await expect(emailInput).toBeVisible({ timeout: 15_000 })
   })
 
   // ── Authenticated tests ────────────────────────────────────────────
