@@ -39,7 +39,7 @@ jobs:
           SCOUTCOPILOT_SERVICE_ROLE_KEY: ${{ secrets.SCOUTCOPILOT_SERVICE_ROLE_KEY }}
           SCOUTCOPILOT_ANON_KEY: ${{ secrets.SCOUTCOPILOT_ANON_KEY }}
           # YouTubeMigration
-          YTMIGRATION_URL: https://ytmigration.com
+          YTMIGRATION_URL: https://channelmover.com
           YTMIGRATION_SUPABASE_URL: ${{ secrets.YTMIGRATION_SUPABASE_URL }}
           YTMIGRATION_SERVICE_ROLE_KEY: ${{ secrets.YTMIGRATION_SERVICE_ROLE_KEY }}
           YTMIGRATION_ANON_KEY: ${{ secrets.YTMIGRATION_ANON_KEY }}
