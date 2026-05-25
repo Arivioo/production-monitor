@@ -832,7 +832,7 @@ test.describe('BackOffice — Production Monitor', () => {
       'create-payment-link',
       'decrypt-secret',
       'delete-account',
-      // 'dispatch-webhook', // Not yet deployed — feature pending launch
+      'dispatch-webhook',
       'encrypt-secret',
       'export-accounting',
       'health-monitor',
