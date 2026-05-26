@@ -29,7 +29,6 @@ function getProjects(): SupabaseProject[] {
     'SignalScore':     { urlEnv: 'SIGNALSCORE_SUPABASE_URL',   keyEnv: 'SIGNALSCORE_ANON_KEY' },
     'APIs':            { urlEnv: 'APIS_SUPABASE_URL',          keyEnv: 'APIS_ANON_KEY' },
     'BeizeJassTour':   { urlEnv: 'JASSTOUR_SUPABASE_URL',      keyEnv: 'JASSTOUR_ANON_KEY' },
-    'CryptoTrading':   { urlEnv: 'CRYPTOTRADING_SUPABASE_URL', keyEnv: 'CRYPTOTRADING_ANON_KEY' },
     'SignalForgeAI':   { urlEnv: 'SIGNALFORGE_SUPABASE_URL',   keyEnv: 'SIGNALFORGE_ANON_KEY' },
   };
 
