@@ -33,7 +33,7 @@ test.describe('Arivioo — Production Monitor', () => {
     // Bypass PasswordGate (Arivioo uses sessionStorage key 'arivioo-unlocked')
     await page.goto(SITE_URL, { waitUntil: 'commit' })
     await page.evaluate(() => sessionStorage.setItem('arivioo-unlocked', 'true'))
-    await page.goto(`${SITE_URL}/login`, { waitUntil: 'networkidle' })
+    await page.goto(`${SITE_URL}/auth`, { waitUntil: 'networkidle' })
 
     const emailInput = page.locator('input[type="email"]').first()
     await expect(emailInput).toBeVisible({ timeout: 10_000 })

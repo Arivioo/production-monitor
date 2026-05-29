@@ -466,7 +466,7 @@ test.describe('SignalScore — Production Monitor', () => {
   // ── Real Login Form Interaction (not magic link bypass) ─────────────
 
   test('login form: fields accept input and opacity > 0', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/login`)
+    await bypassPasswordGate(page, `${SITE_URL}/auth`)
 
     const emailInput = page.locator('input[type="email"]').first()
     await expect(emailInput).toBeVisible({ timeout: 10_000 })
