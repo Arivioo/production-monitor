@@ -30,6 +30,9 @@ test.describe('Arivioo — Production Monitor', () => {
   })
 
   test('login form: fields accept input and opacity > 0', async ({ page }) => {
+    // Bypass PasswordGate (Arivioo uses sessionStorage key 'arivioo-unlocked')
+    await page.goto(SITE_URL, { waitUntil: 'commit' })
+    await page.evaluate(() => sessionStorage.setItem('arivioo-unlocked', 'true'))
     await page.goto(`${SITE_URL}/login`, { waitUntil: 'networkidle' })
 
     const emailInput = page.locator('input[type="email"]').first()

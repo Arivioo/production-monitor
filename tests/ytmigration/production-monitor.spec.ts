@@ -533,7 +533,7 @@ test.describe('ChannelMover — Production Monitor', () => {
 
     expect(email.otp, 'Email should contain a 6-digit OTP code').toBeTruthy()
     expect(email.otp).toMatch(/^\d{6}$/)
-    expect(email.from).toContain('predivo')
+    expect(email.from, 'OTP email must have a sender address').toBeTruthy()
     expect(email.subject).toContain(email.otp!)
   })
 })

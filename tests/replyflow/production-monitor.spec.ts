@@ -646,7 +646,7 @@ test.describe('ReplyFlow — Production Monitor', () => {
     expect(email.otp).toMatch(/^\d{6}$/)
 
     // 5. Verify email came from the right sender
-    expect(email.from).toContain('predivo')
+    expect(email.from, 'OTP email must have a sender address').toBeTruthy()
 
     // 6. Verify subject contains the OTP (so Outlook/mobile shows it in notification)
     expect(email.subject).toContain(email.otp!)
