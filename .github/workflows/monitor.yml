@@ -78,6 +78,8 @@ jobs:
           # Valrano
           VALRANO_URL: https://valrano.com
           VALRANO_SUPABASE_URL: ${{ secrets.VALRANO_SUPABASE_URL }}
+          VALRANO_SERVICE_ROLE_KEY: ${{ secrets.VALRANO_SERVICE_ROLE_KEY }}
+          VALRANO_ANON_KEY: ${{ secrets.VALRANO_ANON_KEY }}
           # APIs (predivo.ch)
           APIS_URL: https://predivo.ch
           APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}

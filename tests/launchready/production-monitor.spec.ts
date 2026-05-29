@@ -198,6 +198,21 @@ test.describe('LaunchReady — Production Monitor', () => {
     expect((bodyText || '').replace(/\s+/g, ' ').trim().length).toBeGreaterThan(500)
   })
 
+  test('login form: fields accept input and opacity > 0', async ({ page }) => {
+    await bypassPasswordGate(page, `${SITE_URL}/login`)
+
+    const emailInput = page.locator('input[type="email"]').first()
+    await expect(emailInput).toBeVisible({ timeout: 10_000 })
+
+    const opacity = await emailInput.evaluate(
+      (el: HTMLElement) => parseFloat(getComputedStyle(el).opacity),
+    )
+    expect(opacity, 'Login email input must have opacity > 0').toBeGreaterThan(0)
+
+    await emailInput.fill('test-monitor@example.com')
+    expect(await emailInput.inputValue()).toBe('test-monitor@example.com')
+  })
+
   test('site identity — title contains launchready', async ({ page }) => {
     await bypassPasswordGate(page, SITE_URL)
     const title = await page.title()

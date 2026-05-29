@@ -1,11 +1,27 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
+import { waitForOtpEmail, clearInbox } from '../../lib/imap'
+import { createClient } from '@supabase/supabase-js'
 
 const SITE_URL = process.env.SIGNALSCORE_URL || 'https://signalscore.ch'
 const SUPABASE_URL = process.env.SIGNALSCORE_SUPABASE_URL!
 const SERVICE_ROLE_KEY = process.env.SIGNALSCORE_SERVICE_ROLE_KEY!
 const ANON_KEY = process.env.SIGNALSCORE_ANON_KEY!
 const TEST_EMAIL = process.env.TEST_EMAIL || 'healthcheck-test@predivo.ch'
+
+// Shared IMAP config for OTP email delivery verification
+const IMAP_HOST = process.env.IMAP_HOST || 'tertia.sui-inter.net'
+const IMAP_PORT = parseInt(process.env.IMAP_PORT || '993')
+const IMAP_USER = process.env.IMAP_USER || ''
+const IMAP_PASS = process.env.IMAP_PASS || ''
+const OTP_TEST_EMAIL = process.env.OTP_TEST_EMAIL || IMAP_USER
+
+const IMAP_OPTS = {
+  host: IMAP_HOST,
+  port: IMAP_PORT,
+  user: IMAP_USER,
+  pass: IMAP_PASS,
+}
 
 /**
  * Bypass the PasswordGate by setting the sessionStorage key before navigation.
@@ -42,6 +58,9 @@ async function loginWithGateBypass(
 test.describe('SignalScore — Production Monitor', () => {
   test.beforeAll(async () => {
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
+    if (OTP_TEST_EMAIL && OTP_TEST_EMAIL !== TEST_EMAIL) {
+      await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, OTP_TEST_EMAIL)
+    }
   })
 
   // ── Existing tests ──
@@ -442,5 +461,68 @@ test.describe('SignalScore — Production Monitor', () => {
         ).toBe(true)
       })
     }
+  })
+
+  // ── Real Login Form Interaction (not magic link bypass) ─────────────
+
+  test('login form: fields accept input and opacity > 0', async ({ page }) => {
+    await bypassPasswordGate(page, `${SITE_URL}/login`)
+
+    const emailInput = page.locator('input[type="email"]').first()
+    await expect(emailInput).toBeVisible({ timeout: 10_000 })
+
+    // Verify opacity > 0 (catches invisible form regressions)
+    const opacity = await emailInput.evaluate(
+      (el: HTMLElement) => parseFloat(getComputedStyle(el).opacity),
+    )
+    expect(opacity, 'Login email input must have opacity > 0').toBeGreaterThan(0)
+
+    // Verify input accepts keystrokes
+    await emailInput.fill('test-monitor@example.com')
+    expect(await emailInput.inputValue()).toBe('test-monitor@example.com')
+  })
+
+  // ── E2E OTP Email Delivery Verification (IMAP) ─────────────────────
+
+  test('E2E OTP: trigger email → verify IMAP delivery → check OTP format', async ({ page }) => {
+    test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP email delivery test')
+    test.setTimeout(90_000)
+
+    await clearInbox(IMAP_OPTS)
+
+    const anonClient = createClient(SUPABASE_URL, ANON_KEY)
+    const { error } = await anonClient.auth.signInWithOtp({
+      email: OTP_TEST_EMAIL,
+      options: { shouldCreateUser: false },
+    })
+
+    if (error?.message?.includes('security purposes') || error?.message?.includes('rate')) {
+      await new Promise((r) => setTimeout(r, 10_000))
+      const retry = await anonClient.auth.signInWithOtp({
+        email: OTP_TEST_EMAIL,
+        options: { shouldCreateUser: false },
+      })
+      if (retry.error) {
+        test.skip(true, `OTP request rate-limited: ${retry.error.message}`)
+        return
+      }
+    } else if (error) {
+      throw new Error(`signInWithOtp failed: ${error.message}`)
+    }
+
+    let email: Awaited<ReturnType<typeof waitForOtpEmail>>
+    try {
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 45_000, deleteAfter: true })
+    } catch {
+      throw new Error(
+        'OTP email NOT delivered within 45s — send-auth-email chain is broken. ' +
+        'Check: pg_net Authorization header, edge function signature guard, SMTP credentials.'
+      )
+    }
+
+    expect(email.otp, 'Email should contain a 6-digit OTP code').toBeTruthy()
+    expect(email.otp).toMatch(/^\d{6}$/)
+    expect(email.from).toContain('predivo')
+    expect(email.subject).toContain(email.otp!)
   })
 })

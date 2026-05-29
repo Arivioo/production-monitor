@@ -66,6 +66,14 @@ test.describe('ShipSolo — Production Monitor', () => {
     await bypassPasswordGate(page, `${SITE_URL}/login`)
     const emailInput = page.locator('input[type="email"], input[name="email"], input[placeholder*="email" i]').first()
     await expect(emailInput).toBeVisible({ timeout: 15_000 })
+
+    const opacity = await emailInput.evaluate(
+      (el: HTMLElement) => parseFloat(getComputedStyle(el).opacity),
+    )
+    expect(opacity, 'Login email input must have opacity > 0').toBeGreaterThan(0)
+
+    await emailInput.fill('test-monitor@example.com')
+    expect(await emailInput.inputValue()).toBe('test-monitor@example.com')
   })
 
   // ── Authenticated tests ────────────────────────────────────────────

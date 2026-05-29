@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
+import { waitForOtpEmail, clearInbox } from '../../lib/imap'
+import { createClient } from '@supabase/supabase-js'
 
 const SITE_URL = process.env.REPLYFLOW_URL || 'https://replyflow.help'
 const SUPABASE_URL = process.env.REPLYFLOW_SUPABASE_URL!
@@ -7,9 +9,28 @@ const SERVICE_ROLE_KEY = process.env.REPLYFLOW_SERVICE_ROLE_KEY!
 const ANON_KEY = process.env.REPLYFLOW_ANON_KEY!
 const TEST_EMAIL = process.env.TEST_EMAIL || 'healthcheck-test@predivo.ch'
 
+// Shared IMAP config — same mailbox used by all project monitors for OTP email verification.
+// IMAP_USER is used as both IMAP login AND OTP recipient. Must have a Supabase auth user in each project.
+const IMAP_HOST = process.env.IMAP_HOST || 'tertia.sui-inter.net'
+const IMAP_PORT = parseInt(process.env.IMAP_PORT || '993')
+const IMAP_USER = process.env.IMAP_USER || ''
+const IMAP_PASS = process.env.IMAP_PASS || ''
+const OTP_TEST_EMAIL = process.env.OTP_TEST_EMAIL || IMAP_USER
+
+const IMAP_OPTS = {
+  host: IMAP_HOST,
+  port: IMAP_PORT,
+  user: IMAP_USER,
+  pass: IMAP_PASS,
+}
+
 test.describe('ReplyFlow — Production Monitor', () => {
   test.beforeAll(async () => {
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
+    // Ensure the shared IMAP test user exists for OTP email delivery tests
+    if (OTP_TEST_EMAIL && OTP_TEST_EMAIL !== TEST_EMAIL) {
+      await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, OTP_TEST_EMAIL)
+    }
   })
 
   // ── Existing tests ──────────────────────────────────────────────────
@@ -521,5 +542,113 @@ test.describe('ReplyFlow — Production Monitor', () => {
     expect(page.url()).toMatch(/\/app\/?$/)
     await expect(page.locator('body')).not.toContainText('Something went wrong', { timeout: 5_000 })
     await expect(page.locator('h1', { hasText: 'Dashboard' })).toBeVisible({ timeout: 10_000 })
+  })
+
+  // ── Real Login Form Interaction (not magic link bypass) ─────────────
+
+  test('login form: fields accept input, opacity > 0, tab switching works', async ({ page }) => {
+    await page.goto(`${SITE_URL}/login`, { waitUntil: 'networkidle' })
+
+    // Verify email input is visible AND has opacity > 0
+    const emailInput = page.locator('input[type="email"]').first()
+    await expect(emailInput).toBeVisible({ timeout: 10_000 })
+    const emailOpacity = await emailInput.evaluate(
+      (el: HTMLElement) => parseFloat(getComputedStyle(el).opacity),
+    )
+    expect(emailOpacity, 'Login email input must have opacity > 0').toBeGreaterThan(0)
+
+    // Type into the email field (catches stale cloneElement / frozen inputs)
+    await emailInput.fill('test-monitor@example.com')
+    expect(await emailInput.inputValue()).toBe('test-monitor@example.com')
+
+    // Switch to Password tab and verify it works
+    const passwordTab = page.getByRole('tab', { name: /password/i }).first()
+      .or(page.locator('button:has-text("Password")').first())
+    if (await passwordTab.isVisible().catch(() => false)) {
+      await passwordTab.click()
+      await page.waitForTimeout(500)
+      const passwordInput = page.locator('input[type="password"]').first()
+      await expect(passwordInput).toBeVisible({ timeout: 10_000 })
+
+      const passOpacity = await passwordInput.evaluate(
+        (el: HTMLElement) => parseFloat(getComputedStyle(el).opacity),
+      )
+      expect(passOpacity, 'Password input must have opacity > 0').toBeGreaterThan(0)
+
+      await passwordInput.fill('TestPassword123!')
+      expect(await passwordInput.inputValue()).toBe('TestPassword123!')
+    }
+
+    // Switch to Email Code tab and verify
+    const emailCodeTab = page.getByRole('tab', { name: /email|code/i }).first()
+      .or(page.locator('button:has-text("Email Code")').first())
+      .or(page.locator('button:has-text("Email")').first())
+    if (await emailCodeTab.isVisible().catch(() => false)) {
+      await emailCodeTab.click()
+      await page.waitForTimeout(500)
+      const codeEmailInput = page.locator('input[type="email"]').first()
+      await expect(codeEmailInput).toBeVisible({ timeout: 10_000 })
+
+      // Password should NOT be visible in email code mode
+      const passwordVisible = await page.locator('input[type="password"]').isVisible().catch(() => false)
+      expect(passwordVisible).toBe(false)
+    }
+  })
+
+  // ── E2E OTP Email Delivery Verification (IMAP) ─────────────────────
+
+  test('E2E OTP: trigger email → verify IMAP delivery → check OTP format', async ({ page }) => {
+    test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP email delivery test')
+    test.setTimeout(90_000)
+
+    // 1. Clear inbox to start fresh
+    await clearInbox(IMAP_OPTS)
+
+    // 2. Trigger OTP email via Supabase Auth API (real SMTP delivery through send-auth-email)
+    const anonClient = createClient(SUPABASE_URL, ANON_KEY)
+    const { error } = await anonClient.auth.signInWithOtp({
+      email: OTP_TEST_EMAIL,
+      options: { shouldCreateUser: false },
+    })
+
+    // Rate limit is acceptable (means the function is working, just throttled)
+    if (error?.message?.includes('security purposes') || error?.message?.includes('rate')) {
+      // Wait and retry once
+      await new Promise((r) => setTimeout(r, 10_000))
+      const retry = await anonClient.auth.signInWithOtp({
+        email: OTP_TEST_EMAIL,
+        options: { shouldCreateUser: false },
+      })
+      if (retry.error) {
+        test.skip(true, `OTP request rate-limited: ${retry.error.message}`)
+        return
+      }
+    } else if (error) {
+      throw new Error(`signInWithOtp failed: ${error.message}`)
+    }
+
+    // 3. Read OTP email from IMAP — proves full chain works:
+    //    GoTrue → handle_send_email → pg_net → send-auth-email → SMTP → mailbox
+    let email: Awaited<ReturnType<typeof waitForOtpEmail>>
+    try {
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 45_000, deleteAfter: true })
+    } catch {
+      // This is the CRITICAL failure case this test was built to catch:
+      // If the email never arrives, the send-auth-email chain is broken
+      throw new Error(
+        'OTP email NOT delivered within 45s — send-auth-email chain is broken. ' +
+        'Check: pg_net Authorization header, edge function signature guard, SMTP credentials.'
+      )
+    }
+
+    // 4. Verify OTP format (6-digit code)
+    expect(email.otp, 'Email should contain a 6-digit OTP code').toBeTruthy()
+    expect(email.otp).toMatch(/^\d{6}$/)
+
+    // 5. Verify email came from the right sender
+    expect(email.from).toContain('predivo')
+
+    // 6. Verify subject contains the OTP (so Outlook/mobile shows it in notification)
+    expect(email.subject).toContain(email.otp!)
   })
 })
