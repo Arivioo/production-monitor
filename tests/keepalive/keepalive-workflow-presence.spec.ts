@@ -21,6 +21,7 @@ const REPOS_REQUIRING_KEEPALIVE = [
   'Arivioo/SignalForgeAi',
   'Arivioo/BoatBuddy',
   'Arivioo/jass-tour-ui-kit',
+  'Arivioo/Cursor_Arivioo',
 ];
 
 const ghToken = process.env.DASHBOARD_PAT;

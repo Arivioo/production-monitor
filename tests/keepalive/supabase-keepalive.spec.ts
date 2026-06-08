@@ -27,7 +27,6 @@ function getProjects(): SupabaseProject[] {
     'ShipSolo':                { urlEnv: 'SHIPSOLO_SUPABASE_URL',              keyEnv: 'SHIPSOLO_ANON_KEY' },
     'BelegPilot':              { urlEnv: 'BELEGPILOT_SUPABASE_URL',            keyEnv: 'BELEGPILOT_ANON_KEY' },
     'Arivioo':                 { urlEnv: 'ARIVIOO_SUPABASE_URL',               keyEnv: 'ARIVIOO_ANON_KEY' },
-    'LaunchReady':             { urlEnv: 'LAUNCHREADY_SUPABASE_URL',           keyEnv: 'LAUNCHREADY_ANON_KEY' },
     'SignalScore':             { urlEnv: 'SIGNALSCORE_SUPABASE_URL',           keyEnv: 'SIGNALSCORE_ANON_KEY' },
     'SignalScore Staging':     { urlEnv: 'SIGNALSCORE_STAGING_SUPABASE_URL',   keyEnv: 'SIGNALSCORE_STAGING_ANON_KEY' },
     'Valrano':                 { urlEnv: 'VALRANO_SUPABASE_URL',               keyEnv: 'VALRANO_ANON_KEY' },

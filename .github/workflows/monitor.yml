@@ -88,8 +88,6 @@ jobs:
           # Keep-alive only (no production site)
           JASSTOUR_SUPABASE_URL: ${{ secrets.JASSTOUR_SUPABASE_URL }}
           JASSTOUR_ANON_KEY: ${{ secrets.JASSTOUR_ANON_KEY }}
-          CRYPTOTRADING_SUPABASE_URL: ${{ secrets.CRYPTOTRADING_SUPABASE_URL }}
-          CRYPTOTRADING_ANON_KEY: ${{ secrets.CRYPTOTRADING_ANON_KEY }}
           SIGNALFORGE_SUPABASE_URL: ${{ secrets.SIGNALFORGE_SUPABASE_URL }}
           SIGNALFORGE_ANON_KEY: ${{ secrets.SIGNALFORGE_ANON_KEY }}
           # Staging projects (keep-alive)
