@@ -18,18 +18,23 @@ function getProjects(): SupabaseProject[] {
   const projects: SupabaseProject[] = [];
 
   const mapping: Record<string, { urlEnv: string; keyEnv: string }> = {
-    'BackOffice':      { urlEnv: 'BACKOFFICE_SUPABASE_URL',    keyEnv: 'BACKOFFICE_ANON_KEY' },
-    'ScoutCopilot':    { urlEnv: 'SCOUTCOPILOT_SUPABASE_URL',  keyEnv: 'SCOUTCOPILOT_ANON_KEY' },
-    'ChannelMover':    { urlEnv: 'YTMIGRATION_SUPABASE_URL',   keyEnv: 'YTMIGRATION_ANON_KEY' },
-    'ReplyFlow':       { urlEnv: 'REPLYFLOW_SUPABASE_URL',     keyEnv: 'REPLYFLOW_ANON_KEY' },
-    'ShipSolo':        { urlEnv: 'SHIPSOLO_SUPABASE_URL',      keyEnv: 'SHIPSOLO_ANON_KEY' },
-    'BelegPilot':      { urlEnv: 'BELEGPILOT_SUPABASE_URL',    keyEnv: 'BELEGPILOT_ANON_KEY' },
-    'Arivioo':         { urlEnv: 'ARIVIOO_SUPABASE_URL',       keyEnv: 'ARIVIOO_ANON_KEY' },
-    'LaunchReady':     { urlEnv: 'LAUNCHREADY_SUPABASE_URL',   keyEnv: 'LAUNCHREADY_ANON_KEY' },
-    'SignalScore':     { urlEnv: 'SIGNALSCORE_SUPABASE_URL',   keyEnv: 'SIGNALSCORE_ANON_KEY' },
-    'APIs':            { urlEnv: 'APIS_SUPABASE_URL',          keyEnv: 'APIS_ANON_KEY' },
-    'BeizeJassTour':   { urlEnv: 'JASSTOUR_SUPABASE_URL',      keyEnv: 'JASSTOUR_ANON_KEY' },
-    'SignalForgeAI':   { urlEnv: 'SIGNALFORGE_SUPABASE_URL',   keyEnv: 'SIGNALFORGE_ANON_KEY' },
+    'BackOffice':              { urlEnv: 'BACKOFFICE_SUPABASE_URL',            keyEnv: 'BACKOFFICE_ANON_KEY' },
+    'BackOffice Staging':      { urlEnv: 'BACKOFFICE_STAGING_SUPABASE_URL',    keyEnv: 'BACKOFFICE_STAGING_ANON_KEY' },
+    'ScoutCopilot':            { urlEnv: 'SCOUTCOPILOT_SUPABASE_URL',          keyEnv: 'SCOUTCOPILOT_ANON_KEY' },
+    'ChannelMover':            { urlEnv: 'YTMIGRATION_SUPABASE_URL',           keyEnv: 'YTMIGRATION_ANON_KEY' },
+    'ReplyFlow':               { urlEnv: 'REPLYFLOW_SUPABASE_URL',             keyEnv: 'REPLYFLOW_ANON_KEY' },
+    'ReplyFlow Staging':       { urlEnv: 'REPLYFLOW_STAGING_SUPABASE_URL',     keyEnv: 'REPLYFLOW_STAGING_ANON_KEY' },
+    'ShipSolo':                { urlEnv: 'SHIPSOLO_SUPABASE_URL',              keyEnv: 'SHIPSOLO_ANON_KEY' },
+    'BelegPilot':              { urlEnv: 'BELEGPILOT_SUPABASE_URL',            keyEnv: 'BELEGPILOT_ANON_KEY' },
+    'Arivioo':                 { urlEnv: 'ARIVIOO_SUPABASE_URL',               keyEnv: 'ARIVIOO_ANON_KEY' },
+    'LaunchReady':             { urlEnv: 'LAUNCHREADY_SUPABASE_URL',           keyEnv: 'LAUNCHREADY_ANON_KEY' },
+    'SignalScore':             { urlEnv: 'SIGNALSCORE_SUPABASE_URL',           keyEnv: 'SIGNALSCORE_ANON_KEY' },
+    'SignalScore Staging':     { urlEnv: 'SIGNALSCORE_STAGING_SUPABASE_URL',   keyEnv: 'SIGNALSCORE_STAGING_ANON_KEY' },
+    'Valrano':                 { urlEnv: 'VALRANO_SUPABASE_URL',               keyEnv: 'VALRANO_ANON_KEY' },
+    'Valrano Staging':         { urlEnv: 'VALRANO_STAGING_SUPABASE_URL',       keyEnv: 'VALRANO_STAGING_ANON_KEY' },
+    'APIs':                    { urlEnv: 'APIS_SUPABASE_URL',                  keyEnv: 'APIS_ANON_KEY' },
+    'BeizeJassTour':           { urlEnv: 'JASSTOUR_SUPABASE_URL',              keyEnv: 'JASSTOUR_ANON_KEY' },
+    'SignalForgeAI':           { urlEnv: 'SIGNALFORGE_SUPABASE_URL',           keyEnv: 'SIGNALFORGE_ANON_KEY' },
   };
 
   for (const [name, { urlEnv, keyEnv }] of Object.entries(mapping)) {
@@ -60,6 +65,6 @@ for (const project of projects) {
   });
 }
 
-test('keep-alive: at least 10 projects configured', () => {
-  expect(projects.length, `Only ${projects.length} projects configured — check env vars`).toBeGreaterThanOrEqual(10);
+test('keep-alive: at least 14 projects configured', () => {
+  expect(projects.length, `Only ${projects.length} projects configured — check env vars`).toBeGreaterThanOrEqual(14);
 });
