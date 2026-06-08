@@ -35,6 +35,8 @@ function getProjects(): SupabaseProject[] {
     'APIs':                    { urlEnv: 'APIS_SUPABASE_URL',                  keyEnv: 'APIS_ANON_KEY' },
     'BeizeJassTour':           { urlEnv: 'JASSTOUR_SUPABASE_URL',              keyEnv: 'JASSTOUR_ANON_KEY' },
     'SignalForgeAI':           { urlEnv: 'SIGNALFORGE_SUPABASE_URL',           keyEnv: 'SIGNALFORGE_ANON_KEY' },
+    'BoatBuddy':               { urlEnv: 'BOATBUDDY_SUPABASE_URL',             keyEnv: 'BOATBUDDY_ANON_KEY' },
+    'BoatBuddy Staging':       { urlEnv: 'BOATBUDDY_STAGING_SUPABASE_URL',     keyEnv: 'BOATBUDDY_STAGING_ANON_KEY' },
   };
 
   for (const [name, { urlEnv, keyEnv }] of Object.entries(mapping)) {
@@ -65,6 +67,6 @@ for (const project of projects) {
   });
 }
 
-test('keep-alive: at least 14 projects configured', () => {
-  expect(projects.length, `Only ${projects.length} projects configured — check env vars`).toBeGreaterThanOrEqual(14);
+test('keep-alive: at least 16 projects configured', () => {
+  expect(projects.length, `Only ${projects.length} projects configured — check env vars`).toBeGreaterThanOrEqual(16);
 });

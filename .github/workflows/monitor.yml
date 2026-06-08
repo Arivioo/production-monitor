@@ -101,6 +101,10 @@ jobs:
           SIGNALSCORE_STAGING_ANON_KEY: ${{ secrets.SIGNALSCORE_STAGING_ANON_KEY }}
           VALRANO_STAGING_SUPABASE_URL: ${{ secrets.VALRANO_STAGING_SUPABASE_URL }}
           VALRANO_STAGING_ANON_KEY: ${{ secrets.VALRANO_STAGING_ANON_KEY }}
+          BOATBUDDY_SUPABASE_URL: ${{ secrets.BOATBUDDY_SUPABASE_URL }}
+          BOATBUDDY_ANON_KEY: ${{ secrets.BOATBUDDY_ANON_KEY }}
+          BOATBUDDY_STAGING_SUPABASE_URL: ${{ secrets.BOATBUDDY_STAGING_SUPABASE_URL }}
+          BOATBUDDY_STAGING_ANON_KEY: ${{ secrets.BOATBUDDY_STAGING_ANON_KEY }}
           # Workflow presence check
           DASHBOARD_PAT: ${{ secrets.DASHBOARD_PAT }}
           # IMAP (for E2E OTP email reading)
