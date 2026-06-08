@@ -45,7 +45,7 @@ export async function waitForOtpEmail(
         const status = await client.status('INBOX', { messages: true })
         if (status.messages === 0) {
           lock.release()
-          await sleep(3000)
+          await sleep(1000)
           continue
         }
 
@@ -57,7 +57,7 @@ export async function waitForOtpEmail(
 
         if (!msg?.source) {
           lock.release()
-          await sleep(3000)
+          await sleep(1000)
           continue
         }
 
@@ -83,7 +83,7 @@ export async function waitForOtpEmail(
         return { otp, confirmationLink, subject, from, date }
       } catch {
         lock.release()
-        await sleep(3000)
+        await sleep(1000)
       }
     }
 

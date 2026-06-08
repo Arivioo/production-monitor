@@ -497,7 +497,7 @@ test.describe('ChannelMover — Production Monitor', () => {
 
   test('E2E OTP: trigger email → verify IMAP delivery → check OTP format', async ({ page }) => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP email delivery test')
-    test.setTimeout(90_000)
+    test.setTimeout(150_000)
 
     await clearInbox(IMAP_OPTS)
 
@@ -523,10 +523,10 @@ test.describe('ChannelMover — Production Monitor', () => {
 
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 45_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
     } catch {
       throw new Error(
-        'OTP email NOT delivered within 45s — send-auth-email chain is broken. ' +
+        'OTP email NOT delivered within 90s — send-auth-email chain is broken. ' +
         'Check: pg_net Authorization header, edge function signature guard, SMTP credentials.'
       )
     }

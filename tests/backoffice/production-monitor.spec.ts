@@ -63,7 +63,7 @@ test.describe('BackOffice — Production Monitor', () => {
 
   test('E2E OTP: request code → email delivery → enter code → dashboard', async ({ page }) => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP test')
-    test.setTimeout(90_000) // Email delivery can be slow
+    test.setTimeout(150_000) // Email delivery can be slow
 
     // 1. Clear inbox to start fresh
     await clearInbox(IMAP_OPTS)
@@ -115,9 +115,9 @@ test.describe('BackOffice — Production Monitor', () => {
     // 5. Read OTP email from IMAP (may fail due to Supabase email delivery delays)
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 45_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
     } catch {
-      test.skip(true, 'OTP email not delivered within 45s — Supabase SMTP delay (not a code bug)')
+      test.skip(true, 'OTP email not delivered within 90s — Supabase SMTP delay (not a code bug)')
       return
     }
     expect(email.otp, 'Email should contain a 6-digit OTP code').toBeTruthy()
@@ -139,7 +139,7 @@ test.describe('BackOffice — Production Monitor', () => {
 
   test('E2E OTP: email contains valid links (no 404)', async ({ page }) => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping email link test')
-    test.setTimeout(90_000)
+    test.setTimeout(150_000)
 
     // 1. Clear inbox and wait to avoid Supabase 5-second cooldown from previous test
     await clearInbox(IMAP_OPTS)
@@ -167,9 +167,9 @@ test.describe('BackOffice — Production Monitor', () => {
     // 3. Read email and check for links
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 45_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
     } catch {
-      test.skip(true, 'OTP email not delivered within 45s — Supabase SMTP delay (not a code bug)')
+      test.skip(true, 'OTP email not delivered within 90s — Supabase SMTP delay (not a code bug)')
       return
     }
 
