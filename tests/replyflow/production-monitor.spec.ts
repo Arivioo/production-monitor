@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
-import { waitForOtpEmail, clearInbox } from '../../lib/imap'
+import { waitForOtpEmail } from '../../lib/imap'
 import { createClient } from '@supabase/supabase-js'
 
 const SITE_URL = process.env.REPLYFLOW_URL || 'https://replyflow.help'
@@ -601,10 +601,7 @@ test.describe('ReplyFlow — Production Monitor', () => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP email delivery test')
     test.setTimeout(150_000)
 
-    // 1. Clear inbox to start fresh
-    await clearInbox(IMAP_OPTS)
-
-    // 2. Trigger OTP email via Supabase Auth API (real SMTP delivery through send-auth-email)
+    // 1. Trigger OTP email via Supabase Auth API (real SMTP delivery through send-auth-email)
     const anonClient = createClient(SUPABASE_URL, ANON_KEY)
     const { error } = await anonClient.auth.signInWithOtp({
       email: OTP_TEST_EMAIL,
@@ -627,11 +624,12 @@ test.describe('ReplyFlow — Production Monitor', () => {
       throw new Error(`signInWithOtp failed: ${error.message}`)
     }
 
-    // 3. Read OTP email from IMAP — proves full chain works:
+    // 2. Read OTP email from IMAP — proves full chain works:
     //    GoTrue → handle_send_email → pg_net → send-auth-email → SMTP → mailbox
+    //    subjectFilter prevents race conditions when multiple projects share the same IMAP inbox
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true, subjectFilter: 'ReplyFlow' })
     } catch {
       // This is the CRITICAL failure case this test was built to catch:
       // If the email never arrives, the send-auth-email chain is broken

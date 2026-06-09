@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { ensureTestUser } from '../../lib/auth'
-import { waitForOtpEmail, clearInbox } from '../../lib/imap'
+import { waitForOtpEmail } from '../../lib/imap'
 import { createClient } from '@supabase/supabase-js'
 
 const SITE_URL = process.env.VALRANO_URL || 'https://valrano.com'
@@ -168,8 +168,6 @@ test.describe('Valrano — Production Monitor', () => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP email delivery test')
     test.setTimeout(150_000)
 
-    await clearInbox(IMAP_OPTS)
-
     const anonClient = createClient(SUPABASE_URL, ANON_KEY)
     const { error } = await anonClient.auth.signInWithOtp({
       email: OTP_TEST_EMAIL,
@@ -192,7 +190,7 @@ test.describe('Valrano — Production Monitor', () => {
 
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true, subjectFilter: 'Valrano' })
     } catch {
       throw new Error(
         'OTP email NOT delivered within 90s — send-auth-email chain is broken. ' +

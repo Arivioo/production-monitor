@@ -19,12 +19,16 @@ interface ParsedOtpEmail {
  * Connects to an IMAP mailbox and waits for a new email containing an OTP code.
  * Polls every 3 seconds for up to `timeoutMs` milliseconds.
  * Returns the OTP code and any confirmation link found in the email body.
+ *
+ * When `subjectFilter` is provided, only emails whose subject contains that
+ * string are considered. This prevents race conditions when multiple projects
+ * share the same IMAP inbox and run OTP tests concurrently.
  */
 export async function waitForOtpEmail(
   config: ImapConfig,
-  opts: { timeoutMs?: number; deleteAfter?: boolean } = {},
+  opts: { timeoutMs?: number; deleteAfter?: boolean; subjectFilter?: string } = {},
 ): Promise<ParsedOtpEmail> {
-  const { timeoutMs = 30_000, deleteAfter = true } = opts
+  const { timeoutMs = 30_000, deleteAfter = true, subjectFilter } = opts
 
   const client = new ImapFlow({
     host: config.host,
@@ -41,18 +45,25 @@ export async function waitForOtpEmail(
     while (Date.now() < deadline) {
       const lock = await client.getMailboxLock('INBOX')
       try {
-        // Get the most recent message
-        const status = await client.status('INBOX', { messages: true })
-        if (status.messages === 0) {
+        // Search for messages — filter by subject when provided
+        const searchCriteria: Record<string, unknown> = {}
+        if (subjectFilter) {
+          searchCriteria.subject = subjectFilter
+        }
+        const uids = await client.search(searchCriteria, { uid: true })
+
+        if (uids.length === 0) {
           lock.release()
           await sleep(1000)
           continue
         }
 
-        // Fetch the latest message
-        const msg = await client.fetchOne('*', {
+        // Fetch the latest matching message (highest UID)
+        const latestUid = uids[uids.length - 1]
+        const msg = await client.fetchOne(String(latestUid), {
           envelope: true,
           source: true,
+          uid: true,
         })
 
         if (!msg?.source) {
@@ -74,9 +85,9 @@ export async function waitForOtpEmail(
         const linkMatch = rawEmail.match(/https?:\/\/[^\s"<>]+(?:verify|confirm|callback)[^\s"<>]*/i)
         const confirmationLink = linkMatch ? decodeHtmlEntities(linkMatch[0]) : null
 
-        // Delete the message after reading
+        // Delete only this message after reading
         if (deleteAfter) {
-          await client.messageDelete('*')
+          await client.messageDelete(String(latestUid), { uid: true })
         }
 
         lock.release()

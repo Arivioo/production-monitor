@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
-import { waitForOtpEmail, clearInbox } from '../../lib/imap'
+import { waitForOtpEmail } from '../../lib/imap'
 import { createClient } from '@supabase/supabase-js'
 
 const SITE_URL = process.env.BACKOFFICE_URL || 'https://backoffice.predivo.ch'
@@ -65,10 +65,7 @@ test.describe('BackOffice — Production Monitor', () => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping E2E OTP test')
     test.setTimeout(150_000) // Email delivery can be slow
 
-    // 1. Clear inbox to start fresh
-    await clearInbox(IMAP_OPTS)
-
-    // 2. Navigate to auth page
+    // 1. Navigate to auth page
     await page.goto(`${SITE_URL}/auth`)
     await page.waitForLoadState('networkidle')
 
@@ -115,7 +112,7 @@ test.describe('BackOffice — Production Monitor', () => {
     // 5. Read OTP email from IMAP (may fail due to Supabase email delivery delays)
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true, subjectFilter: 'BackOffice' })
     } catch {
       test.skip(true, 'OTP email not delivered within 90s — Supabase SMTP delay (not a code bug)')
       return
@@ -141,8 +138,7 @@ test.describe('BackOffice — Production Monitor', () => {
     test.skip(!IMAP_PASS, 'IMAP_PASS not configured — skipping email link test')
     test.setTimeout(150_000)
 
-    // 1. Clear inbox and wait to avoid Supabase 5-second cooldown from previous test
-    await clearInbox(IMAP_OPTS)
+    // 1. Wait to avoid Supabase 5-second cooldown from previous test
     await new Promise((r) => setTimeout(r, 10_000))
 
     // 2. Trigger OTP email via anon client (real SMTP delivery)
@@ -167,7 +163,7 @@ test.describe('BackOffice — Production Monitor', () => {
     // 3. Read email and check for links
     let email: Awaited<ReturnType<typeof waitForOtpEmail>>
     try {
-      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true })
+      email = await waitForOtpEmail(IMAP_OPTS, { timeoutMs: 90_000, deleteAfter: true, subjectFilter: 'BackOffice' })
     } catch {
       test.skip(true, 'OTP email not delivered within 90s — Supabase SMTP delay (not a code bug)')
       return
