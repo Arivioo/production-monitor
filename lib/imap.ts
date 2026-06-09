@@ -40,12 +40,9 @@ export async function waitForOtpEmail(
 
   try {
     await client.connect()
-    console.log(`[IMAP] Connected to ${config.host}:${config.port} as ${config.user}`)
     const deadline = Date.now() + timeoutMs
-    let iteration = 0
 
     while (Date.now() < deadline) {
-      iteration++
       const lock = await client.getMailboxLock('INBOX')
       try {
         // Search for messages — filter by subject when provided
@@ -55,10 +52,6 @@ export async function waitForOtpEmail(
         }
         const uids = await client.search(searchCriteria, { uid: true })
 
-        if (iteration <= 3 || iteration % 10 === 0) {
-          console.log(`[IMAP] iter=${iteration} filter="${subjectFilter}" uids=${uids.length} (${uids.slice(-3).join(',')})`)
-        }
-
         if (uids.length === 0) {
           lock.release()
           await sleep(1000)
@@ -66,15 +59,16 @@ export async function waitForOtpEmail(
         }
 
         // Fetch the latest matching message (highest UID)
+        // NOTE: uid:true MUST be in the 3rd arg (options), NOT in the query object.
+        // Passing it in the query causes fetchOne to treat UIDs as sequence numbers,
+        // which fails when UID > message count.
         const latestUid = uids[uids.length - 1]
         const msg = await client.fetchOne(String(latestUid), {
           envelope: true,
           source: true,
-          uid: true,
-        })
+        }, { uid: true })
 
         if (!msg?.source) {
-          console.log(`[IMAP] iter=${iteration} uid=${latestUid} fetchOne returned no source`)
           lock.release()
           await sleep(1000)
           continue
@@ -84,8 +78,6 @@ export async function waitForOtpEmail(
         const subject = msg.envelope?.subject || ''
         const from = msg.envelope?.from?.[0]?.address || ''
         const date = msg.envelope?.date || new Date()
-
-        console.log(`[IMAP] iter=${iteration} uid=${latestUid} subject="${subject}" from=${from} date=${date}`)
 
         // Extract 6-digit OTP from subject or body
         const otpMatch = rawEmail.match(/\b(\d{6})\b/)
@@ -102,14 +94,13 @@ export async function waitForOtpEmail(
 
         lock.release()
         return { otp, confirmationLink, subject, from, date }
-      } catch (err) {
-        console.log(`[IMAP] iter=${iteration} ERROR: ${(err as Error).message}`)
+      } catch {
         lock.release()
         await sleep(1000)
       }
     }
 
-    throw new Error(`No OTP email received within ${timeoutMs}ms (ran ${iteration} iterations)`)
+    throw new Error(`No OTP email received within ${timeoutMs}ms`)
   } finally {
     await client.logout().catch(() => {})
   }
