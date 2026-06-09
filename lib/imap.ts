@@ -40,9 +40,12 @@ export async function waitForOtpEmail(
 
   try {
     await client.connect()
+    console.log(`[IMAP] Connected to ${config.host}:${config.port} as ${config.user}`)
     const deadline = Date.now() + timeoutMs
+    let iteration = 0
 
     while (Date.now() < deadline) {
+      iteration++
       const lock = await client.getMailboxLock('INBOX')
       try {
         // Search for messages — filter by subject when provided
@@ -51,6 +54,10 @@ export async function waitForOtpEmail(
           searchCriteria.subject = subjectFilter
         }
         const uids = await client.search(searchCriteria, { uid: true })
+
+        if (iteration <= 3 || iteration % 10 === 0) {
+          console.log(`[IMAP] iter=${iteration} filter="${subjectFilter}" uids=${uids.length} (${uids.slice(-3).join(',')})`)
+        }
 
         if (uids.length === 0) {
           lock.release()
@@ -67,6 +74,7 @@ export async function waitForOtpEmail(
         })
 
         if (!msg?.source) {
+          console.log(`[IMAP] iter=${iteration} uid=${latestUid} fetchOne returned no source`)
           lock.release()
           await sleep(1000)
           continue
@@ -76,6 +84,8 @@ export async function waitForOtpEmail(
         const subject = msg.envelope?.subject || ''
         const from = msg.envelope?.from?.[0]?.address || ''
         const date = msg.envelope?.date || new Date()
+
+        console.log(`[IMAP] iter=${iteration} uid=${latestUid} subject="${subject}" from=${from} date=${date}`)
 
         // Extract 6-digit OTP from subject or body
         const otpMatch = rawEmail.match(/\b(\d{6})\b/)
@@ -92,13 +102,14 @@ export async function waitForOtpEmail(
 
         lock.release()
         return { otp, confirmationLink, subject, from, date }
-      } catch {
+      } catch (err) {
+        console.log(`[IMAP] iter=${iteration} ERROR: ${(err as Error).message}`)
         lock.release()
         await sleep(1000)
       }
     }
 
-    throw new Error(`No OTP email received within ${timeoutMs}ms`)
+    throw new Error(`No OTP email received within ${timeoutMs}ms (ran ${iteration} iterations)`)
   } finally {
     await client.logout().catch(() => {})
   }
