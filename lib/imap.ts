@@ -1,3 +1,17 @@
+// ============================================================
+// ImapFlow UID consistency rule — READ BEFORE EDITING
+// ------------------------------------------------------------
+// ImapFlow methods take { uid: true } in DIFFERENT positions:
+//   search(criteria, OPTIONS)        → 2nd arg (2 params)
+//   fetchOne(range, query, OPTIONS)  → 3rd arg (3 params)
+//   messageDelete(range, OPTIONS)    → 2nd arg (2 params)
+//
+// If you change ANY IMAP call, verify ALL calls agree on UID
+// vs sequence mode. Putting uid:true in fetchOne's 2nd arg
+// silently treats UIDs as sequence numbers — works by accident
+// when UIDs are small, then breaks as UIDs grow past message
+// count. Use fetchOneByUid() below to avoid this entirely.
+// ============================================================
 import { ImapFlow } from 'imapflow'
 
 interface ImapConfig {
@@ -59,14 +73,11 @@ export async function waitForOtpEmail(
         }
 
         // Fetch the latest matching message (highest UID)
-        // NOTE: uid:true MUST be in the 3rd arg (options), NOT in the query object.
-        // Passing it in the query causes fetchOne to treat UIDs as sequence numbers,
-        // which fails when UID > message count.
         const latestUid = uids[uids.length - 1]
-        const msg = await client.fetchOne(String(latestUid), {
+        const msg = await fetchOneByUid(client, latestUid, {
           envelope: true,
           source: true,
-        }, { uid: true })
+        })
 
         if (!msg?.source) {
           lock.release()
@@ -135,6 +146,14 @@ export async function clearInbox(config: ImapConfig): Promise<number> {
   } finally {
     await client.logout().catch(() => {})
   }
+}
+
+/**
+ * Safe wrapper: always fetches by UID (3rd arg), never sequence number.
+ * Prevents the bug where uid:true in the 2nd arg is silently ignored.
+ */
+function fetchOneByUid(client: ImapFlow, uid: number, query: { envelope?: boolean; source?: boolean }) {
+  return client.fetchOne(String(uid), query, { uid: true })
 }
 
 function sleep(ms: number): Promise<void> {
