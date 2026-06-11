@@ -38,3 +38,37 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           ALERT_EMAIL: roger@mueller.ro
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Collects per-workflow GitHub Actions status across all repos → automation-status.json
+  # (consumed by the BackOffice "Wie wir arbeiten" handbook) and emails if any workflow
+  # has been red for >48h. Separate job so it runs even if the dashboard update fails.
+  automation-status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Collect automation status
+        id: collect
+        run: node scripts/automation-status.mjs
+        env:
+          GH_TOKEN: ${{ secrets.DASHBOARD_PAT }}
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+
+      - name: Escalate workflows red for >48h
+        if: failure() && steps.collect.outcome == 'failure'
+        run: node scripts/send-automation-alert.mjs
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: roger@mueller.ro
