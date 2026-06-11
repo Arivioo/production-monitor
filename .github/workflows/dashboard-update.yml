@@ -63,8 +63,10 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
 
+      # Always runs after collection; the script emails only when escalations exist
+      # (red >48h) and exits 0 otherwise, so this never fails the job.
       - name: Escalate workflows red for >48h
-        if: failure() && steps.collect.outcome == 'failure'
+        if: always() && steps.collect.outcome == 'success'
         run: node scripts/send-automation-alert.mjs
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}

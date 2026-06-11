@@ -165,12 +165,13 @@ if (FTP_HOST && FTP_USER && FTP_PASS) {
   console.log('FTP creds not set — skipping upload.')
 }
 
-// Write the escalation list so the workflow can decide whether to email.
+// Write the escalation list so the always()-step can email if non-empty.
+// Escalations are DATA, not a script failure — exit 0 so the workflow stays green
+// (its job is collecting + uploading, which succeeded). The email + the handbook
+// widget surface the red workflows; a real script error still throws → exit 1 → red.
 writeFileSync('/tmp/automation-escalations.json', JSON.stringify(escalations, null, 2))
 
-// Non-zero exit only when something has been red past the threshold — triggers the alert step.
 if (escalations.length > 0) {
-  console.error(`\n${escalations.length} workflow(s) red for >${RED_ESCALATION_HOURS}h:`)
-  for (const e of escalations) console.error(`  ${e.name} / ${e.workflow} — ${e.redHours}h`)
-  process.exit(2)
+  console.log(`\n${escalations.length} workflow(s) red for >${RED_ESCALATION_HOURS}h (alert email will be sent):`)
+  for (const e of escalations) console.log(`  ${e.name} / ${e.workflow} — ${e.redHours}h`)
 }
