@@ -1,0 +1,41 @@
+name: Auth Email Config Guard
+
+# Catches the recurring Supabase auth-email regression: rate_limit_email_sent
+# silently reverting to 2/hour (on project migration or partial PATCH), or a
+# project running on Supabase's built-in mailer (hard-capped at 2/hr). A red run
+# here is the alert; an email is also sent if ALERT_SMTP_* secrets are set.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Audit every project's auth-email config
+        run: node scripts/check-auth-email-config.mjs
+        env:
+          SUPABASE_TOKEN_MUELLER: ${{ secrets.SUPABASE_TOKEN_MUELLER }}
+          SUPABASE_TOKEN_REPLYFLOW: ${{ secrets.SUPABASE_TOKEN_REPLYFLOW }}
+          SUPABASE_TOKEN_ARIVIOO: ${{ secrets.SUPABASE_TOKEN_ARIVIOO }}
+          SUPABASE_TOKEN_CHANNELMOVER: ${{ secrets.SUPABASE_TOKEN_CHANNELMOVER }}
+          SUPABASE_TOKEN_API: ${{ secrets.SUPABASE_TOKEN_API }}
+          SUPABASE_TOKEN_LAUNCHREADY: ${{ secrets.SUPABASE_TOKEN_LAUNCHREADY }}
+          SUPABASE_TOKEN_BELEGPILOT: ${{ secrets.SUPABASE_TOKEN_BELEGPILOT }}
+          SUPABASE_TOKEN_SIGNALFORGEAI: ${{ secrets.SUPABASE_TOKEN_SIGNALFORGEAI }}
+          SUPABASE_TOKEN_DISTRIBUTIONOS: ${{ secrets.SUPABASE_TOKEN_DISTRIBUTIONOS }}
+          SUPABASE_TOKEN_SCOUTCOPILOT: ${{ secrets.SUPABASE_TOKEN_SCOUTCOPILOT }}
+          SUPABASE_TOKEN_BACKOFFICE: ${{ secrets.SUPABASE_TOKEN_BACKOFFICE }}
+          SUPABASE_TOKEN_BOATBUDDY: ${{ secrets.SUPABASE_TOKEN_BOATBUDDY }}
+          ALERT_SMTP_HOST: ${{ secrets.ALERT_SMTP_HOST }}
+          ALERT_SMTP_PORT: ${{ secrets.ALERT_SMTP_PORT }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASS: ${{ secrets.ALERT_SMTP_PASS }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
