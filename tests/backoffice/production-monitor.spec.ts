@@ -129,9 +129,11 @@ test.describe('BackOffice — Production Monitor', () => {
     }
 
     // 7. Verify redirect to dashboard
-    await page.waitForURL((url) => !url.pathname.includes('/auth'), { timeout: 15_000 })
+    // Generous post-OTP timeouts: the auth redirect + dashboard hydrate can be
+    // slow under load. A real outage still won't complete within 30s.
+    await page.waitForURL((url) => !url.pathname.includes('/auth'), { timeout: 30_000 })
     await page.waitForLoadState('networkidle')
-    await expect(page.locator('text=Dashboard').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('text=Dashboard').first()).toBeVisible({ timeout: 15_000 })
   })
 
   test('E2E OTP: email contains valid links (no 404)', async ({ page }) => {

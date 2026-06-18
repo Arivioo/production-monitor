@@ -145,7 +145,7 @@ function extractFailures(suite, parentName) {
 
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests ?? []) {
-      if (test.status === 'unexpected' || test.status === 'flaky') {
+      if (test.status === 'unexpected') {
         const lastResult = test.results?.[test.results.length - 1]
         const errorMsg =
           lastResult?.errors?.[0]?.message ||

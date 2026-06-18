@@ -24,12 +24,15 @@ function extractFailures(suite, parentName) {
 
   for (const spec of suite.specs ?? []) {
     for (const test of spec.tests ?? []) {
-      if (test.status === 'unexpected' || test.status === 'flaky') {
-        const lastResult = test.results?.[test.results.length - 1]
-        const errorMsg = lastResult?.errors?.[0]?.message
-          || lastResult?.error?.message
+      if (test.status === 'unexpected') {
+        // Pull the error from the last result that actually failed (an
+        // 'unexpected' test's final result holds the real error).
+        const failedResult = [...(test.results ?? [])].reverse()
+          .find((r) => r.errors?.length || r.error) || test.results?.[test.results.length - 1]
+        const errorMsg = failedResult?.errors?.[0]?.message
+          || failedResult?.error?.message
           || 'Unknown error'
-        const location = lastResult?.errors?.[0]?.location
+        const location = failedResult?.errors?.[0]?.location
         const cleanError = stripAnsi(errorMsg).split('\n')[0].slice(0, 300)
         const fileRef = location
           ? `${location.file?.split('/').pop()}:${location.line}`

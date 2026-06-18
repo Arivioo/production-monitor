@@ -148,10 +148,21 @@ test.describe('Valrano — Production Monitor', () => {
     // Bypass PasswordGate (Valrano uses localStorage key 'bs_unlocked')
     await page.goto(SITE_URL, { waitUntil: 'commit' })
     await page.evaluate(() => localStorage.setItem('bs_unlocked', 'true'))
-    await page.goto(`${SITE_URL}/login`, { waitUntil: 'networkidle' })
-
+    // Reload-retry: a deploy-in-progress (Metanet FTP file swap) can briefly
+    // serve a partial SPA with no login form. Reload a few times before failing,
+    // so a transient mid-deploy moment self-heals instead of alerting. A
+    // genuinely broken form still fails the final assertion below.
     const emailInput = page.locator('input[type="email"]').first()
-    await expect(emailInput).toBeVisible({ timeout: 10_000 })
+    let rendered = false
+    for (let attempt = 0; attempt < 3 && !rendered; attempt++) {
+      await page.goto(`${SITE_URL}/login`, { waitUntil: 'networkidle' })
+      rendered = await emailInput
+        .waitFor({ state: 'visible', timeout: 8_000 })
+        .then(() => true)
+        .catch(() => false)
+      if (!rendered) await page.waitForTimeout(3_000)
+    }
+    await expect(emailInput).toBeVisible({ timeout: 5_000 })
 
     const opacity = await emailInput.evaluate(
       (el: HTMLElement) => parseFloat(getComputedStyle(el).opacity),
