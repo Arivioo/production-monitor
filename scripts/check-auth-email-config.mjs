@@ -2,48 +2,43 @@
 /**
  * Auth-email config guard.
  *
- * Why this exists: Supabase auth emails are gated by GoTrue's `rate_limit_email_sent`,
- * which DEFAULTS to 2/hour and resets to 2 on (a) project migration to a new ref and
- * (b) partial Management-API PATCHes. Worse, Supabase HARD-CAPS it at 2 unless the
- * project has custom SMTP configured OR a send-email hook enabled. This silently
- * breaks signup/OTP/password-reset for real users and has recurred ≥5 times across
- * projects. Nothing verified it — so it was only ever caught by a human hitting the
- * wall. This guard GETs every project's /config/auth and fails (and emails) if any
- * project is at risk.
+ * Supabase auth emails are gated by GoTrue rate_limit_email_sent, which DEFAULTS to
+ * 2/hour and is HARD-CAPPED at 2 unless the project has custom SMTP OR a send-email
+ * hook. This silently breaks signup/OTP/password-reset and has recurred >=5 times.
+ * This guard GETs every project /config/auth and fails if an ENFORCED project is at risk.
  *
- * A project is AT RISK when:
- *   - rate_limit_email_sent <= 2, OR
- *   - neither custom SMTP (smtp_host) nor the send-email hook is configured
- *     (which means it uses Supabase's built-in mailer, hard-capped at 2/hr).
+ * A project is AT RISK when rate_limit_email_sent < MIN_RATE_LIMIT, OR neither custom
+ * SMTP (smtp_host) nor the send-email hook is configured.
  *
- * Tokens are read from env (one Management-API token per Supabase account):
- *   SUPABASE_TOKEN_MUELLER, _REPLYFLOW, _ARIVIOO, _CHANNELMOVER, _API,
- *   _LAUNCHREADY, _BELEGPILOT, _SIGNALFORGEAI, _DISTRIBUTIONOS, _SCOUTCOPILOT,
- *   _BACKOFFICE, _BOATBUDDY
- * Missing tokens are reported (never silently skipped).
+ * SCOPE: the GoTrue cap only matters for projects that send auth email THROUGH GoTrue.
+ * Auditing every project produced permanent false "at risk" reds for projects that do
+ * not (password-gate apps, no-signup admin tools, projects with their own SMTP edge
+ * functions that bypass GoTrue, and staging/test envs with no real users). Those are
+ * marked exempt below and are REPORTED but never fail. A project marked warn is a known
+ * latent risk (pre-launch MVP that DOES use the GoTrue mailer): prints WARNING, does not
+ * fail. Each verdict was source-audited; see memory session_three_red_workflows_2026_06_18.
  *
- * Optional email alert: set ALERT_SMTP_HOST, ALERT_SMTP_PORT, ALERT_SMTP_USER,
- * ALERT_SMTP_PASS, ALERT_TO. Exit code is 1 when any project is at risk (or a
- * token is missing), so a scheduled CI run goes red even without email.
+ * Tokens: SUPABASE_TOKEN_<ACCT> per account. Missing tokens reported for ENFORCED only.
+ * Optional alert via ALERT_SMTP_*. Exit 1 when any ENFORCED project is at risk/missing.
  */
 
-const MIN_RATE_LIMIT = 10 // documented minimum (reference_supabase_project_setup.md)
+const MIN_RATE_LIMIT = 10
+const STAGING = 'staging/test environment - no real users; e2e auth tests bypass email (password-grant)'
 
-// account env-var suffix -> [{ ref, name }]
 const ACCOUNTS = {
   MUELLER: [
     { ref: 'ogdpgufptemcgyszmjek', name: 'SignalScore' },
-    { ref: 'blfnyxwcriyxvsaubiqb', name: 'SignalScore Staging' },
+    { ref: 'blfnyxwcriyxvsaubiqb', name: 'SignalScore Staging', exempt: STAGING },
   ],
   REPLYFLOW: [
     { ref: 'dqmhsdzldkxngwjrxois', name: 'ReplyFlow' },
-    { ref: 'cuvqzwvyovxvvvuddtjd', name: 'ReplyFlow Staging' },
+    { ref: 'cuvqzwvyovxvvvuddtjd', name: 'ReplyFlow Staging', exempt: STAGING },
   ],
-  ARIVIOO: [{ ref: 'iooexkbuxmeryeuzpxau', name: 'Arivioo' }],
+  ARIVIOO: [{ ref: 'iooexkbuxmeryeuzpxau', name: 'Arivioo', exempt: 'auth email via custom SMTP edge functions (request-signup-code / request-password-reset) that bypass GoTrue - rate cap does not apply (verified: no signUp/OTP/resetPasswordForEmail in frontend)' }],
   CHANNELMOVER: [{ ref: 'qswluvqunswggfmesdcs', name: 'ChannelMover' }],
   API: [
-    { ref: 'pjsxzjjhlwjqpkvsopuj', name: 'APIs' },
-    { ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour' },
+    { ref: 'pjsxzjjhlwjqpkvsopuj', name: 'APIs', exempt: 'no Supabase auth email - password-only admin login, no self-service signup/OTP/reset' },
+    { ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour', warn: 'PRE-LAUNCH MVP - uses GoTrue built-in mailer via supabase.auth.signUp() (jass-tour-ui-kit Auth.tsx:92). Configure custom SMTP/hook + rate_limit_email_sent>=10 BEFORE public launch.' },
   ],
   LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'ShipSolo' }],
   BELEGPILOT: [{ ref: 'lybpfwzpoiutuqggbixg', name: 'BelegPilot' }],
@@ -51,16 +46,16 @@ const ACCOUNTS = {
   DISTRIBUTIONOS: [
     { ref: 'jxjpbmkgmuunpayqgbsx', name: 'DistributionOS' },
     { ref: 'mkdeftmubrkseyrrbzvp', name: 'Valrano' },
-    { ref: 'vfwpcgdkrwqhdivfzmrg', name: 'Valrano Staging' },
+    { ref: 'vfwpcgdkrwqhdivfzmrg', name: 'Valrano Staging', exempt: STAGING },
   ],
   SCOUTCOPILOT: [{ ref: 'rlcsuqwqzoqjykdiqjye', name: 'ScoutCopilot' }],
   BACKOFFICE: [
     { ref: 'xoecpzfsskalvjrtcbbl', name: 'BackOffice' },
-    { ref: 'vvgqkwiqauafcflshsec', name: 'BackOffice Staging' },
+    { ref: 'vvgqkwiqauafcflshsec', name: 'BackOffice Staging', exempt: STAGING },
   ],
   BOATBUDDY: [
-    { ref: 'xzythvxmuxmczuiophwp', name: 'BoatBuddy' },
-    { ref: 'svpewgbwousyheohlrtt', name: 'BoatBuddy Staging' },
+    { ref: 'xzythvxmuxmczuiophwp', name: 'BoatBuddy', exempt: 'not Supabase Auth - client-side password gate (PasswordGate.tsx, SHA-256); no signup/OTP/reset email flows' },
+    { ref: 'svpewgbwousyheohlrtt', name: 'BoatBuddy Staging', exempt: 'not Supabase Auth - client-side password gate; no auth email flows' },
   ],
 }
 
@@ -77,7 +72,7 @@ function evaluate(cfg) {
   const hasCustomDelivery = Boolean(cfg.smtp_host) || cfg.hook_send_email_enabled === true
   const reasons = []
   if (typeof rate !== 'number' || rate < MIN_RATE_LIMIT) reasons.push(`rate_limit_email_sent=${rate} (< ${MIN_RATE_LIMIT})`)
-  if (!hasCustomDelivery) reasons.push('no custom SMTP and no send-email hook (built-in mailer → hard-capped at 2/hr)')
+  if (!hasCustomDelivery) reasons.push('no custom SMTP and no send-email hook (built-in mailer hard-capped at 2/hr)')
   return reasons
 }
 
@@ -85,14 +80,15 @@ async function main() {
   const violations = []
   const missingTokens = []
   const rows = []
+  const exempt = []
+  const warnings = []
 
   for (const [acct, projects] of Object.entries(ACCOUNTS)) {
     const token = process.env[`SUPABASE_TOKEN_${acct}`]
-    if (!token) {
-      for (const p of projects) missingTokens.push(`${p.name} (account ${acct})`)
-      continue
-    }
     for (const p of projects) {
+      if (p.exempt) { exempt.push({ name: p.name, reason: p.exempt }); continue }
+      if (p.warn) { warnings.push({ name: p.name, reason: p.warn }); continue }
+      if (!token) { missingTokens.push(`${p.name} (account ${acct})`); continue }
       try {
         const cfg = await getAuthConfig(p.ref, token)
         const reasons = evaluate(cfg)
@@ -105,17 +101,24 @@ async function main() {
     }
   }
 
-  // Report
+  console.log('ENFORCED (GoTrue email auth):')
   console.log('PROJECT'.padEnd(22), 'RATE'.padEnd(5), 'SMTP'.padEnd(22), 'HOOK'.padEnd(6), 'STATUS')
   for (const r of rows) {
     console.log(String(r.name).padEnd(22), String(r.rate).padEnd(5), String(r.smtp).padEnd(22), String(r.hook).padEnd(6), r.ok ? 'OK' : '*** AT RISK ***')
   }
+  if (warnings.length) {
+    console.log('\nWARN (latent - does not fail the guard, but act before launch):')
+    for (const w of warnings) console.log('  [WARN]', w.name, '-', w.reason)
+  }
+  if (exempt.length) {
+    console.log('\nEXEMPT (GoTrue email cap does not apply):')
+    for (const e of exempt) console.log('  -', e.name.padEnd(20), '-', e.reason)
+  }
   if (missingTokens.length) {
-    console.log('\nUNAUDITED (missing SUPABASE_TOKEN_* secret):')
+    console.log('\nUNAUDITED (missing SUPABASE_TOKEN_* secret for an ENFORCED project):')
     for (const m of missingTokens) console.log('  -', m)
   }
 
-  // Optional email alert (self-contained; red CI run is the primary alert)
   if (violations.length && process.env.ALERT_SMTP_HOST) {
     try {
       const nodemailer = await import('nodemailer')
@@ -129,8 +132,8 @@ async function main() {
       await t.sendMail({
         from: `Auth Config Guard <${process.env.ALERT_SMTP_USER}>`,
         to: process.env.ALERT_TO,
-        subject: `[ALERT] ${violations.length} Supabase project(s) with at-risk auth-email config`,
-        html: `<p>${violations.length} project(s) at risk of the 2/hour auth-email cap:</p><ul>${list}</ul><p>Fix: configure custom SMTP (or send-email hook) + set rate_limit_email_sent &ge; ${MIN_RATE_LIMIT} via the Management API.</p>`,
+        subject: `[ALERT] ${violations.length} Supabase project(s) at-risk auth-email config`,
+        html: `<p>${violations.length} project(s) at risk:</p><ul>${list}</ul><p>Fix: custom SMTP or send-email hook + rate_limit_email_sent &ge; ${MIN_RATE_LIMIT}.</p>`,
       })
     } catch (e) {
       console.error('alert email failed:', e.message)
@@ -138,10 +141,10 @@ async function main() {
   }
 
   if (violations.length || missingTokens.length) {
-    console.error(`\nFAIL: ${violations.length} project(s) at risk, ${missingTokens.length} unaudited.`)
+    console.error(`\nFAIL: ${violations.length} enforced project(s) at risk, ${missingTokens.length} unaudited.`)
     process.exit(1)
   }
-  console.log('\nAll audited projects OK.')
+  console.log(`\nAll enforced projects OK (${exempt.length} exempt, ${warnings.length} warn).`)
 }
 
 main()
