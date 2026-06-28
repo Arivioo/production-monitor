@@ -241,24 +241,20 @@ test.describe('ReplyFlow — Production Monitor', () => {
     await expect(page.locator('span', { hasText: 'Response Rate' }).first()).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('span', { hasText: 'Needs Reply' }).first()).toBeVisible({ timeout: 15_000 })
 
-    // "Recent Reviews" section heading must be present
-    const recentHeading = page.locator('h2', { hasText: 'Recent Reviews' })
-    await expect(recentHeading).toBeVisible({ timeout: 15_000 })
+    // Reviews section heading — shows "Needs Reply (N)" when unreplied exist, or "Reviews" otherwise
+    const reviewsHeading = page.locator('h2', { hasText: /Needs Reply|Reviews/ })
+    await expect(reviewsHeading).toBeVisible({ timeout: 15_000 })
 
     // Quick-action links must be present
     await expect(page.locator('a, button').filter({ hasText: 'Generate AI Replies' }).first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator('a').filter({ hasText: 'View All Reviews' }).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('a').filter({ hasText: /View All Reviews|View all/i }).first()).toBeVisible({ timeout: 15_000 })
 
-    // The section below "Recent Reviews" must show either a review card or the empty-state message.
-    // Empty state: "Set up your business in Settings to get started." (no business) or
-    //              "No reviews yet. Connect a platform to start importing reviews." (business but no reviews)
-    // Review card: aria-label="Review from ..."
-    // We look for each independently and assert at least one is present.
-    const emptyState = page.locator('p').filter({ hasText: /Set up your business|No reviews yet/i }).first()
+    // The reviews section must show either review cards, "All caught up!", or a setup empty-state.
+    const emptyState = page.locator('p').filter({ hasText: /Set up your business|No reviews yet|All caught up/i }).first()
     const reviewCard = page.locator('[aria-label^="Review from"]').first()
     const hasEmpty = await emptyState.isVisible({ timeout: 20_000 }).catch(() => false)
     const hasReviews = await reviewCard.isVisible({ timeout: 3_000 }).catch(() => false)
-    expect(hasEmpty || hasReviews, 'Recent Reviews section must show either reviews or an empty-state message').toBeTruthy()
+    expect(hasEmpty || hasReviews, 'Reviews section must show either reviews or an empty/caught-up message').toBeTruthy()
   })
 
   test('reviews interaction — list loads, filters work, detail panel opens', async ({ page }) => {
