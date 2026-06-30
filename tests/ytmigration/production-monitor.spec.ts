@@ -89,15 +89,10 @@ test.describe('ChannelMover — Production Monitor', () => {
     await expect(body).toContainText(/\$\d/)
   })
 
-  test('extension page loads', async ({ page }) => {
-    await page.goto(`${SITE_URL}/extension`)
-    await page.waitForLoadState('networkidle')
-
-    const body = page.locator('body')
-    await expect(body).not.toBeEmpty()
-    // Should mention Chrome or extension
-    await expect(body).toContainText(/extension|chrome|install/i)
-  })
+  // NOTE: The /extension page and the Chrome extension were retired in
+  // ChannelMover commit a90d08e (Data API v3 is now the default migration
+  // path). The "extension page loads" and "extension page interaction" tests
+  // were removed here to match shipped reality.
 
   test('about page loads', async ({ page }) => {
     await page.goto(`${SITE_URL}/about`)
@@ -276,32 +271,7 @@ test.describe('ChannelMover — Production Monitor', () => {
     expect(urlAfterClick).toMatch(/auth\/login|accounts\.google|channelmover\.com/)
   })
 
-  test('extension page interaction — Chrome extension info sections and browser compatibility', async ({ page }) => {
-    await page.goto(`${SITE_URL}/extension`)
-    await page.waitForLoadState('networkidle')
-
-    const body = page.locator('body')
-
-    // Page heading
-    await expect(body).toContainText('Chrome Extension', { timeout: 10_000 })
-
-    // Key informational sections from extension.tsx
-    await expect(body).toContainText(/what does the extension do/i)
-    await expect(body).toContainText(/how to install/i)
-    await expect(body).toContainText(/how it works/i)
-    await expect(body).toContainText(/privacy/i)
-
-    // Browser compatibility list: Google Chrome is supported
-    await expect(body).toContainText('Google Chrome')
-    await expect(body).toContainText(/supported/i)
-
-    // Microsoft Edge and Firefox listed (coming soon)
-    await expect(body).toContainText('Microsoft Edge')
-    await expect(body).toContainText('Mozilla Firefox')
-
-    // Install/beta note
-    await expect(body).toContainText(/beta/i)
-  })
+  // (extension page interaction test removed — extension retired, see note above)
 
   test('guide page interaction — step-by-step guide content with data type sections', async ({ page }) => {
     await page.goto(`${SITE_URL}/guide/youtube-account-migration`)
@@ -415,7 +385,6 @@ test.describe('ChannelMover — Production Monitor', () => {
       'ai-analyze',
       'ai-categorize',
       'ai-chat',
-      'capture-youtube-cookies',
       'check-channel-status',
       'clean-account-worker',
       'cleanup-old-data',
@@ -424,7 +393,6 @@ test.describe('ChannelMover — Production Monitor', () => {
       'delete-account',
       'disconnect-youtube-account',
       'encrypt-existing-tokens',
-      'extension-playlist-bridge',
       'innertube-auth-poll',
       'innertube-auth-start',
       'migrate-liked-videos',
@@ -439,13 +407,13 @@ test.describe('ChannelMover — Production Monitor', () => {
       'restart-migration',
       'resume-migration',
       'rollback-migration',
-      'save-youtube-cookies',
       'scan-clean-account',
       'scan-source-account',
       'send-auth-email',
       'start-clean-account',
       'start-migration',
       'stripe-webhook',
+      'validate-account-tokens',
     ]
 
     for (const fn of ALL_EDGE_FUNCTIONS) {
