@@ -3,7 +3,12 @@ name: Production Monitor
 on:
   schedule:
     - cron: '*/60 * * * *'  # Every 60 minutes
-  workflow_dispatch: {}      # Manual trigger
+  workflow_dispatch:         # Manual trigger
+    inputs:
+      force_resolved_email:
+        description: 'Send a test "all clear" resolution email (verifies the notification path)'
+        type: boolean
+        default: false
   push:
     branches: [master]
 
@@ -166,6 +171,7 @@ jobs:
           ALERT_EMAIL: roger@mueller.ro
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
+          FORCE_RESOLVED_EMAIL: ${{ inputs.force_resolved_email }}
 
       - uses: actions/upload-artifact@v7
         if: always()
