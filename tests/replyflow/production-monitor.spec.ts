@@ -7,6 +7,7 @@ import {
   listDeployedFunctions,
   isFunctionReachable,
 } from '../../lib/edgeFunctions'
+import { fetchRouteManifest, checkPublicRoutes } from '../../lib/publicRoutes'
 
 const SITE_URL = process.env.REPLYFLOW_URL || 'https://replyflow.help'
 const SUPABASE_URL = process.env.REPLYFLOW_SUPABASE_URL!
@@ -56,41 +57,12 @@ test.describe('ReplyFlow — Production Monitor', () => {
   // behind. The build gate (scripts/check-monitor-routes.mjs) keeps the list
   // honest against the prerendered output.
   test('public routes from manifest load and render (not 404/empty)', async ({ page, request }) => {
-    const res = await request.get(`${SITE_URL}/monitor-routes.json`)
-    // On Apache SPA hosting a missing file is NOT a 404 — the SPA fallback
-    // serves index.html (200, text/html). Require real JSON so we skip (not
-    // fail) until the manifest is actually deployed.
-    const contentType = res.headers()['content-type'] || ''
-    const isJsonManifest = res.status() === 200 && contentType.includes('application/json')
-    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${res.status()} ${contentType || 'no content-type'})`)
-    const manifest = await res.json()
-    const routes = (manifest.routes ?? []) as Array<{ path: string; mustContain?: string[] }>
-    const notFoundMarkers: string[] = manifest.notFoundMarkers ?? ['Page Not Found']
-    expect(routes.length, 'manifest contains no routes').toBeGreaterThan(0)
-
-    const failures: string[] = []
-    for (const { path: routePath, mustContain } of routes) {
-      // domcontentloaded (not networkidle): public pages are prerendered so the
-      // content is in the initial HTML, and networkidle can hang on a persistent
-      // Supabase realtime socket.
-      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'domcontentloaded' })
-      const title = await page.title()
-      const body = (await page.locator('body').textContent()) || ''
-
-      if (body.trim().length < 50) {
-        failures.push(`${routePath}: body nearly empty`)
-        continue
-      }
-      if (notFoundMarkers.some((m) => title.includes(m) || body.includes(m))) {
-        failures.push(`${routePath}: rendered the not-found page`)
-        continue
-      }
-      for (const needle of mustContain ?? []) {
-        if (!body.toLowerCase().includes(needle.toLowerCase())) {
-          failures.push(`${routePath}: missing expected content "${needle}"`)
-        }
-      }
-    }
+    // Manifest fetch + per-route render checks live in lib/publicRoutes.ts so
+    // all projects share one correct implementation (no per-spec drift).
+    const { isJsonManifest, status, contentType, manifest } = await fetchRouteManifest(request, SITE_URL)
+    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${status} ${contentType || 'no content-type'})`)
+    expect((manifest!.routes ?? []).length, 'manifest contains no routes').toBeGreaterThan(0)
+    const failures = await checkPublicRoutes(page, SITE_URL, manifest!)
     expect(failures, `Public route checks failed:\n${failures.join('\n')}`).toEqual([])
   })
 

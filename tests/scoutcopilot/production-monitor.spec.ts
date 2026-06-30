@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
+import { fetchRouteManifest, checkPublicRoutes } from '../../lib/publicRoutes'
 
 const SITE_URL = process.env.SCOUTCOPILOT_URL || 'https://scoutcopilot.com'
 const SUPABASE_URL = process.env.SCOUTCOPILOT_SUPABASE_URL!
@@ -37,44 +38,19 @@ test.describe('ScoutCopilot — Production Monitor', () => {
   // prerender), so there is no build-time route gate — this not-found check is
   // what catches a broken/removed route.
   test('public routes from manifest load and render (not 404/empty)', async ({ page, request }) => {
-    const res = await request.get(`${SITE_URL}/monitor-routes.json`)
-    // On Apache SPA hosting a missing file serves index.html (200, text/html),
-    // so require real JSON to skip (not fail) until the manifest is deployed.
-    const contentType = res.headers()['content-type'] || ''
-    const isJsonManifest = res.status() === 200 && contentType.includes('application/json')
-    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${res.status()} ${contentType || 'no content-type'})`)
-    const manifest = await res.json()
-    const routes = (manifest.routes ?? []) as Array<{ path: string; mustContain?: string[] }>
-    const notFoundMarkers: string[] = manifest.notFoundMarkers ?? ['Page not found']
-    expect(routes.length, 'manifest contains no routes').toBeGreaterThan(0)
+    // Manifest fetch + per-route render checks live in lib/publicRoutes.ts so
+    // all projects share one correct implementation (no per-spec drift).
+    const { isJsonManifest, status, contentType, manifest } = await fetchRouteManifest(request, SITE_URL)
+    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${status} ${contentType || 'no content-type'})`)
+    expect((manifest!.routes ?? []).length, 'manifest contains no routes').toBeGreaterThan(0)
 
-    // Bypass the client-side PasswordGate on every navigation.
+    // Bypass the client-side PasswordGate on every navigation (persists across
+    // the goto()s inside checkPublicRoutes).
     await page.addInitScript(() => {
       try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch { /* ignore */ }
     })
 
-    const failures: string[] = []
-    for (const { path: routePath, mustContain } of routes) {
-      // networkidle: ScoutCopilot is a client-rendered SPA (content is not in
-      // the initial HTML), so wait for the app to render before reading it.
-      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'networkidle' })
-      const title = await page.title()
-      const body = (await page.locator('body').textContent()) || ''
-
-      if (body.trim().length < 50) {
-        failures.push(`${routePath}: body nearly empty`)
-        continue
-      }
-      if (notFoundMarkers.some((m) => title.includes(m) || body.includes(m))) {
-        failures.push(`${routePath}: rendered the not-found page`)
-        continue
-      }
-      for (const needle of mustContain ?? []) {
-        if (!body.toLowerCase().includes(needle.toLowerCase())) {
-          failures.push(`${routePath}: missing expected content "${needle}"`)
-        }
-      }
-    }
+    const failures = await checkPublicRoutes(page, SITE_URL, manifest!)
     expect(failures, `Public route checks failed:\n${failures.join('\n')}`).toEqual([])
   })
 
