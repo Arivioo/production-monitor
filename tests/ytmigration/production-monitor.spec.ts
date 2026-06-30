@@ -2,6 +2,11 @@ import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
 import { waitForOtpEmail } from '../../lib/imap'
 import { createClient } from '@supabase/supabase-js'
+import {
+  projectRefFromUrl,
+  listDeployedFunctions,
+  isFunctionReachable,
+} from '../../lib/edgeFunctions'
 
 const SITE_URL = process.env.YTMIGRATION_URL || 'https://channelmover.com'
 const SUPABASE_URL = process.env.YTMIGRATION_SUPABASE_URL!
@@ -381,60 +386,31 @@ test.describe('ChannelMover — Production Monitor', () => {
   })
 
   test.describe('Edge Functions Reachable', () => {
-    const ALL_EDGE_FUNCTIONS = [
-      'ai-analyze',
-      'ai-categorize',
-      'ai-chat',
-      'check-channel-status',
-      'clean-account-worker',
-      'cleanup-old-data',
-      'connect-youtube-account',
-      'create-checkout-session',
-      'delete-account',
-      'disconnect-youtube-account',
-      'encrypt-existing-tokens',
-      'innertube-auth-poll',
-      'innertube-auth-start',
-      'migrate-liked-videos',
-      'migrate-playlists',
-      'migrate-subscriptions',
-      'migrate-watch-history',
-      'migrate-watch-later',
-      'migration-watchdog',
-      'process-migration-queue',
-      'process-takeout',
-      'refresh-youtube-token',
-      'restart-migration',
-      'resume-migration',
-      'rollback-migration',
-      'scan-clean-account',
-      'scan-source-account',
-      'send-auth-email',
-      'start-clean-account',
-      'start-migration',
-      'stripe-webhook',
-      'validate-account-tokens',
-    ]
+    const ACCESS_TOKEN = process.env.YTMIGRATION_SUPABASE_ACCESS_TOKEN
 
-    for (const fn of ALL_EDGE_FUNCTIONS) {
-      test(`edge function ${fn} is deployed`, async ({ request }) => {
-        const response = await request.fetch(
-          `${SUPABASE_URL}/functions/v1/${fn}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            data: {},
-          }
-        )
-        const status = response.status()
-        // Any status except 404 means the function is deployed and responding.
-        // 500 is expected when calling without auth/body — it's still proof the function exists.
-        expect(
-          status !== 404,
-          `Edge function "${fn}" returned 404 — not deployed`
-        ).toBe(true)
-      })
-    }
+    // Auto-discovered, not hardcoded: ask Supabase what is ACTUALLY deployed and
+    // verify each function responds. Add/remove a function and this test follows
+    // automatically — there is no list to keep in sync, so an intentional
+    // removal can never leave a stale entry behind a false 404 alarm.
+    test('all deployed edge functions are reachable (auto-discovered)', async () => {
+      expect(
+        ACCESS_TOKEN,
+        'YTMIGRATION_SUPABASE_ACCESS_TOKEN is not set — cannot discover deployed functions',
+      ).toBeTruthy()
+
+      const ref = projectRefFromUrl(SUPABASE_URL)
+      const deployed = await listDeployedFunctions(ref, ACCESS_TOKEN!)
+      expect(deployed.length, 'No edge functions discovered for project').toBeGreaterThan(0)
+
+      const results = await Promise.all(
+        deployed.map((slug) => isFunctionReachable(SUPABASE_URL, slug)),
+      )
+      const unreachable = results.filter((r) => !r.reachable)
+      expect(
+        unreachable,
+        `Deployed functions returning 404: ${unreachable.map((r) => r.slug).join(', ')}`,
+      ).toEqual([])
+    })
   })
 
   // ── Real Login Form Interaction (not magic link bypass) ─────────────

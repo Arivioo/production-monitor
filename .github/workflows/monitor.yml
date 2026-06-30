@@ -37,6 +37,7 @@ jobs:
           BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
           BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
           BACKOFFICE_ANON_KEY: ${{ secrets.BACKOFFICE_ANON_KEY }}
+          BACKOFFICE_SUPABASE_ACCESS_TOKEN: ${{ secrets.BACKOFFICE_SUPABASE_ACCESS_TOKEN }}
           # ScoutCopilot
           SCOUTCOPILOT_URL: https://scoutcopilot.com
           SCOUTCOPILOT_SUPABASE_URL: ${{ secrets.SCOUTCOPILOT_SUPABASE_URL }}
@@ -47,11 +48,13 @@ jobs:
           YTMIGRATION_SUPABASE_URL: ${{ secrets.YTMIGRATION_SUPABASE_URL }}
           YTMIGRATION_SERVICE_ROLE_KEY: ${{ secrets.YTMIGRATION_SERVICE_ROLE_KEY }}
           YTMIGRATION_ANON_KEY: ${{ secrets.YTMIGRATION_ANON_KEY }}
+          YTMIGRATION_SUPABASE_ACCESS_TOKEN: ${{ secrets.YTMIGRATION_SUPABASE_ACCESS_TOKEN }}
           # ReplyFlow
           REPLYFLOW_URL: https://replyflow.help
           REPLYFLOW_SUPABASE_URL: ${{ secrets.REPLYFLOW_SUPABASE_URL }}
           REPLYFLOW_SERVICE_ROLE_KEY: ${{ secrets.REPLYFLOW_SERVICE_ROLE_KEY }}
           REPLYFLOW_ANON_KEY: ${{ secrets.REPLYFLOW_ANON_KEY }}
+          REPLYFLOW_SUPABASE_ACCESS_TOKEN: ${{ secrets.REPLYFLOW_SUPABASE_ACCESS_TOKEN }}
           # ShipSolo
           SHIPSOLO_URL: https://distributionos.predivo.ch
           SHIPSOLO_SUPABASE_URL: ${{ secrets.SHIPSOLO_SUPABASE_URL }}
@@ -77,6 +80,7 @@ jobs:
           SIGNALSCORE_SUPABASE_URL: ${{ secrets.SIGNALSCORE_SUPABASE_URL }}
           SIGNALSCORE_SERVICE_ROLE_KEY: ${{ secrets.SIGNALSCORE_SERVICE_ROLE_KEY }}
           SIGNALSCORE_ANON_KEY: ${{ secrets.SIGNALSCORE_ANON_KEY }}
+          SIGNALSCORE_SUPABASE_ACCESS_TOKEN: ${{ secrets.SIGNALSCORE_SUPABASE_ACCESS_TOKEN }}
           # Predivo
           PREDIVO_URL: https://predivo.ch
           # Valrano
@@ -84,6 +88,7 @@ jobs:
           VALRANO_SUPABASE_URL: ${{ secrets.VALRANO_SUPABASE_URL }}
           VALRANO_SERVICE_ROLE_KEY: ${{ secrets.VALRANO_SERVICE_ROLE_KEY }}
           VALRANO_ANON_KEY: ${{ secrets.VALRANO_ANON_KEY }}
+          VALRANO_SUPABASE_ACCESS_TOKEN: ${{ secrets.VALRANO_SUPABASE_ACCESS_TOKEN }}
           # APIs (predivo.ch)
           APIS_URL: https://predivo.ch
           APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}

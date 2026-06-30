@@ -64,3 +64,55 @@ export async function ensureTestUser(
     throw new Error(`Failed to create test user: ${error.message}`)
   }
 }
+
+/**
+ * Forces the monitor's test user onto a fully-entitled plan so feature-gated
+ * pages render their real content instead of an upsell screen.
+ *
+ * WHY: tests that navigate to plan-gated features (e.g. Analytics = Pro+) must
+ * NOT depend on whatever plan state the prod DB happens to hold — otherwise a
+ * future gating change silently turns a passing test into a false alarm. By
+ * seeding the precondition here, the test always establishes the state it needs.
+ * Defaults to the highest tier so ANY gate is satisfied.
+ *
+ * Generic over the subscription table/columns since schemas differ per project.
+ */
+export async function setUserPlan(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  email: string,
+  opts: {
+    plan: string
+    status?: string
+    table?: string
+    planColumn?: string
+    statusColumn?: string
+    currentPeriodEnd?: string | null
+  },
+): Promise<void> {
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+
+  // Resolve user_id by email (admin API has no getUserByEmail).
+  let userId: string | undefined
+  for (let page = 1; page <= 10 && !userId; page++) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 })
+    if (error) throw new Error(`setUserPlan listUsers failed: ${error.message}`)
+    userId = data.users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase())?.id
+    if (data.users.length < 1000) break
+  }
+  if (!userId) throw new Error(`setUserPlan: no auth user found for ${email}`)
+
+  const table = opts.table ?? 'subscriptions'
+  const row: Record<string, unknown> = {
+    user_id: userId,
+    [opts.planColumn ?? 'plan']: opts.plan,
+  }
+  if (opts.status) row[opts.statusColumn ?? 'status'] = opts.status
+  if (opts.currentPeriodEnd !== undefined) row.current_period_end = opts.currentPeriodEnd
+  else row.current_period_end = '2099-12-31T00:00:00+00:00'
+
+  const { error } = await supabase.from(table).upsert(row, { onConflict: 'user_id' })
+  if (error) throw new Error(`setUserPlan upsert into ${table} failed: ${error.message}`)
+}
