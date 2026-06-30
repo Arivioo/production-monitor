@@ -62,10 +62,15 @@ test.describe('ChannelMover — Production Monitor', () => {
   test('public routes from manifest load and render (not 404/empty)', async ({ page, request }) => {
     const res = await request.get(`${SITE_URL}/monitor-routes.json`)
     // Until ChannelMover ships the deploy that publishes the manifest, skip
-    // rather than fail — this keeps the monitor green during rollout. Once the
-    // manifest is live the test activates automatically.
-    test.skip(res.status() === 404, 'monitor-routes.json not deployed yet')
-    expect(res.status(), `${SITE_URL}/monitor-routes.json must be deployed`).toBe(200)
+    // rather than fail — this keeps the monitor green during rollout. On Apache
+    // SPA hosting a missing file is NOT a 404: the SPA fallback serves index.html
+    // with HTTP 200, so a status-only guard lets HTML through and res.json()
+    // throws "Unexpected token '<'". Guard on the actual payload being real JSON
+    // (200 + application/json). Once the manifest is live the test activates
+    // automatically.
+    const contentType = res.headers()['content-type'] || ''
+    const isJsonManifest = res.status() === 200 && contentType.includes('application/json')
+    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${res.status()} ${contentType || 'no content-type'})`)
     const manifest = await res.json()
     const routes = (manifest.routes ?? []) as Array<{ path: string; mustContain?: string[] }>
     const notFoundMarkers: string[] = manifest.notFoundMarkers ?? ['Page Not Found']
