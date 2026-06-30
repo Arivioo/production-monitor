@@ -48,10 +48,50 @@ test.describe('ReplyFlow — Production Monitor', () => {
 
   // ── Existing tests ──────────────────────────────────────────────────
 
-  test('site loads', async ({ page }) => {
-    await page.goto(SITE_URL)
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('body')).not.toBeEmpty()
+  // ── Public routes: manifest-driven ──────────────────────────────────
+  // Every public route is smoke-tested from the deployed manifest at
+  // ${SITE_URL}/monitor-routes.json, generated from ReplyFlow's single source
+  // of truth (scripts/monitor-routes.mjs). Adding/removing a public route there
+  // updates this automatically — a removed page can't leave a stale assertion
+  // behind. The build gate (scripts/check-monitor-routes.mjs) keeps the list
+  // honest against the prerendered output.
+  test('public routes from manifest load and render (not 404/empty)', async ({ page, request }) => {
+    const res = await request.get(`${SITE_URL}/monitor-routes.json`)
+    // On Apache SPA hosting a missing file is NOT a 404 — the SPA fallback
+    // serves index.html (200, text/html). Require real JSON so we skip (not
+    // fail) until the manifest is actually deployed.
+    const contentType = res.headers()['content-type'] || ''
+    const isJsonManifest = res.status() === 200 && contentType.includes('application/json')
+    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${res.status()} ${contentType || 'no content-type'})`)
+    const manifest = await res.json()
+    const routes = (manifest.routes ?? []) as Array<{ path: string; mustContain?: string[] }>
+    const notFoundMarkers: string[] = manifest.notFoundMarkers ?? ['Page Not Found']
+    expect(routes.length, 'manifest contains no routes').toBeGreaterThan(0)
+
+    const failures: string[] = []
+    for (const { path: routePath, mustContain } of routes) {
+      // domcontentloaded (not networkidle): public pages are prerendered so the
+      // content is in the initial HTML, and networkidle can hang on a persistent
+      // Supabase realtime socket.
+      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'domcontentloaded' })
+      const title = await page.title()
+      const body = (await page.locator('body').textContent()) || ''
+
+      if (body.trim().length < 50) {
+        failures.push(`${routePath}: body nearly empty`)
+        continue
+      }
+      if (notFoundMarkers.some((m) => title.includes(m) || body.includes(m))) {
+        failures.push(`${routePath}: rendered the not-found page`)
+        continue
+      }
+      for (const needle of mustContain ?? []) {
+        if (!body.toLowerCase().includes(needle.toLowerCase())) {
+          failures.push(`${routePath}: missing expected content "${needle}"`)
+        }
+      }
+    }
+    expect(failures, `Public route checks failed:\n${failures.join('\n')}`).toEqual([])
   })
 
   test('full login works and dashboard loads', async ({ page }) => {
@@ -69,26 +109,6 @@ test.describe('ReplyFlow — Production Monitor', () => {
 
   // ── Public page tests ───────────────────────────────────────────────
 
-  test('landing page has hero and pricing', async ({ page }) => {
-    await page.goto(SITE_URL, { waitUntil: 'networkidle' })
-
-    // Hero section should be visible
-    const hero = page.locator('section').first()
-    await expect(hero).toBeVisible({ timeout: 10_000 })
-
-    // Expect a main heading in the hero area
-    const h1 = page.locator('h1').first()
-    await expect(h1).toBeVisible({ timeout: 10_000 })
-
-    // Pricing cards — expect 3 tiers
-    const pricingCards = page.locator('[class*="pricing"], [class*="Pricing"], [class*="plan"], [class*="Plan"], [class*="tier"], [class*="card"]').or(
-      page.locator('[data-testid*="pricing"]')
-    )
-    // Fallback: look for pricing section by heading text
-    const pricingHeading = page.locator('text=/pricing|plans|Pricing|Plans/i').first()
-    await expect(pricingHeading).toBeVisible({ timeout: 10_000 })
-  })
-
   test('login page has form', async ({ page }) => {
     await page.goto(`${SITE_URL}/login`, { waitUntil: 'networkidle' })
 
@@ -99,29 +119,6 @@ test.describe('ReplyFlow — Production Monitor', () => {
     // Submit button should be present
     const submitButton = page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in"), button:has-text("Continue")').first()
     await expect(submitButton).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('privacy page loads', async ({ page }) => {
-    await page.goto(`${SITE_URL}/privacy`, { waitUntil: 'networkidle' })
-
-    // Page should have meaningful content (not a blank or error page)
-    const body = page.locator('body')
-    await expect(body).not.toBeEmpty()
-
-    // Should contain privacy-related text
-    const privacyContent = page.locator('text=/privacy|datenschutz|data protection/i').first()
-    await expect(privacyContent).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('terms page loads', async ({ page }) => {
-    await page.goto(`${SITE_URL}/terms`, { waitUntil: 'networkidle' })
-
-    const body = page.locator('body')
-    await expect(body).not.toBeEmpty()
-
-    // Should contain terms-related text
-    const termsContent = page.locator('text=/terms|conditions|nutzungsbedingungen|AGB/i').first()
-    await expect(termsContent).toBeVisible({ timeout: 10_000 })
   })
 
   // ── Protected route redirect test ───────────────────────────────────

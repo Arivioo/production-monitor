@@ -70,10 +70,52 @@ test.describe('SignalScore — Production Monitor', () => {
 
   // ── Existing tests ──
 
-  test('site loads', async ({ page }) => {
-    await page.goto(SITE_URL)
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('body')).not.toBeEmpty()
+  // ── Public routes: manifest-driven ──────────────────────────────────
+  // Every public route is smoke-tested from the deployed manifest at
+  // ${SITE_URL}/monitor-routes.json, generated from SignalScore's single source
+  // of truth (scripts/monitor-routes.mjs). Adding/removing a public route there
+  // updates this automatically. The build gate (scripts/check-monitor-routes.mjs)
+  // keeps the list honest against the prerendered output.
+  test('public routes from manifest load and render (not 404/empty)', async ({ page, request }) => {
+    const res = await request.get(`${SITE_URL}/monitor-routes.json`)
+    // On Apache SPA hosting a missing file serves index.html (200, text/html),
+    // so require real JSON to skip (not fail) until the manifest is deployed.
+    const contentType = res.headers()['content-type'] || ''
+    const isJsonManifest = res.status() === 200 && contentType.includes('application/json')
+    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${res.status()} ${contentType || 'no content-type'})`)
+    const manifest = await res.json()
+    const routes = (manifest.routes ?? []) as Array<{ path: string; mustContain?: string[] }>
+    const notFoundMarkers: string[] = manifest.notFoundMarkers ?? ['Page Not Found']
+    expect(routes.length, 'manifest contains no routes').toBeGreaterThan(0)
+
+    // Bypass the client-side PasswordGate on every navigation.
+    await page.addInitScript(() => {
+      try { sessionStorage.setItem('signalscore-unlocked', 'true') } catch { /* ignore */ }
+    })
+
+    const failures: string[] = []
+    for (const { path: routePath, mustContain } of routes) {
+      // domcontentloaded: public pages are prerendered (content in initial HTML)
+      // and networkidle can hang on a persistent Supabase realtime socket.
+      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'domcontentloaded' })
+      const title = await page.title()
+      const body = (await page.locator('body').textContent()) || ''
+
+      if (body.trim().length < 50) {
+        failures.push(`${routePath}: body nearly empty`)
+        continue
+      }
+      if (notFoundMarkers.some((m) => title.includes(m) || body.includes(m))) {
+        failures.push(`${routePath}: rendered the not-found page`)
+        continue
+      }
+      for (const needle of mustContain ?? []) {
+        if (!body.toLowerCase().includes(needle.toLowerCase())) {
+          failures.push(`${routePath}: missing expected content "${needle}"`)
+        }
+      }
+    }
+    expect(failures, `Public route checks failed:\n${failures.join('\n')}`).toEqual([])
   })
 
   test('full login works and dashboard loads', async ({ page }) => {
@@ -87,45 +129,6 @@ test.describe('SignalScore — Production Monitor', () => {
     await page.waitForLoadState('networkidle')
     const url = page.url()
     expect(url).not.toContain('/auth')
-  })
-
-  test('methodology page loads', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/legal/methodology`)
-    await expect(page.locator('body')).not.toBeEmpty()
-  })
-
-  // ── New public page tests ──
-
-  test('landing page renders hero content', async ({ page }) => {
-    await bypassPasswordGate(page, SITE_URL)
-    // The hero section contains the brand name and a CTA
-    await expect(page.locator('text=SignalScore').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('text=Methodology').first()).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('landing page pricing section loads', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/pricing`)
-    // /pricing renders the Landing component; verify the pricing section exists
-    await expect(page.locator('#pricing')).toBeAttached({ timeout: 10_000 })
-  })
-
-  test('privacy page loads', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/legal/privacy`)
-    await expect(page.locator('h1, h2').first()).toBeVisible({ timeout: 10_000 })
-    // Verify it contains privacy-related content
-    await expect(page.locator('text=Privacy').first()).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('terms page loads', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/legal/terms`)
-    await expect(page.locator('h1, h2').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('text=Terms').first()).toBeVisible({ timeout: 10_000 })
-  })
-
-  test('imprint page loads', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/legal/imprint`)
-    await expect(page.locator('h1, h2').first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('text=Imprint').first()).toBeVisible({ timeout: 10_000 })
   })
 
   // ── Authenticated tests ──

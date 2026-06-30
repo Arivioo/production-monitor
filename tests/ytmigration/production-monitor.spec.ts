@@ -78,7 +78,10 @@ test.describe('ChannelMover — Production Monitor', () => {
 
     const failures: string[] = []
     for (const { path: routePath, mustContain } of routes) {
-      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'networkidle' })
+      // domcontentloaded (not networkidle): public pages are prerendered so the
+      // content is in the initial HTML, and networkidle can hang on a persistent
+      // Supabase realtime socket.
+      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'domcontentloaded' })
       const title = await page.title()
       const body = (await page.locator('body').textContent()) || ''
 

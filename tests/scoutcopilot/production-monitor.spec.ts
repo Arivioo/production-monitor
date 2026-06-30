@@ -29,31 +29,53 @@ test.describe('ScoutCopilot — Production Monitor', () => {
 
   // ─── Public Pages ─────────────────────────────────────────────
 
-  test('site loads and shows content', async ({ page }) => {
-    await page.goto(SITE_URL)
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('body')).not.toBeEmpty()
-  })
+  // ── Public routes: manifest-driven ──────────────────────────────────
+  // Every public route is smoke-tested from the deployed manifest at
+  // ${SITE_URL}/monitor-routes.json, generated from ScoutCopilot's single
+  // source of truth (scripts/monitor-routes.mjs). Adding/removing a public
+  // route there updates this automatically. ScoutCopilot is a pure SPA (no
+  // prerender), so there is no build-time route gate — this not-found check is
+  // what catches a broken/removed route.
+  test('public routes from manifest load and render (not 404/empty)', async ({ page, request }) => {
+    const res = await request.get(`${SITE_URL}/monitor-routes.json`)
+    // On Apache SPA hosting a missing file serves index.html (200, text/html),
+    // so require real JSON to skip (not fail) until the manifest is deployed.
+    const contentType = res.headers()['content-type'] || ''
+    const isJsonManifest = res.status() === 200 && contentType.includes('application/json')
+    test.skip(!isJsonManifest, `monitor-routes.json not deployed yet (got ${res.status()} ${contentType || 'no content-type'})`)
+    const manifest = await res.json()
+    const routes = (manifest.routes ?? []) as Array<{ path: string; mustContain?: string[] }>
+    const notFoundMarkers: string[] = manifest.notFoundMarkers ?? ['Page not found']
+    expect(routes.length, 'manifest contains no routes').toBeGreaterThan(0)
 
-  test('landing page loads after gate bypass', async ({ page }) => {
-    await bypassPasswordGate(page, SITE_URL)
-    const h1 = page.locator('h1').first()
-    await expect(h1).toBeVisible({ timeout: 10_000 })
-  })
+    // Bypass the client-side PasswordGate on every navigation.
+    await page.addInitScript(() => {
+      try { sessionStorage.setItem('scoutcopilot-unlocked', 'true') } catch { /* ignore */ }
+    })
 
-  test('pricing page loads', async ({ page }) => {
-    // Use root /pricing — the site handles language routing internally
-    await bypassPasswordGate(page, `${SITE_URL}/pricing`)
-    await expect(page.locator('body')).not.toBeEmpty()
-    const text = await page.locator('body').textContent()
-    expect((text || '').length).toBeGreaterThan(100)
-  })
+    const failures: string[] = []
+    for (const { path: routePath, mustContain } of routes) {
+      // networkidle: ScoutCopilot is a client-rendered SPA (content is not in
+      // the initial HTML), so wait for the app to render before reading it.
+      await page.goto(`${SITE_URL}${routePath}`, { waitUntil: 'networkidle' })
+      const title = await page.title()
+      const body = (await page.locator('body').textContent()) || ''
 
-  test('privacy page loads', async ({ page }) => {
-    await bypassPasswordGate(page, `${SITE_URL}/privacy`)
-    await expect(page.locator('body')).not.toBeEmpty()
-    const text = await page.locator('body').textContent()
-    expect((text || '').length).toBeGreaterThan(50)
+      if (body.trim().length < 50) {
+        failures.push(`${routePath}: body nearly empty`)
+        continue
+      }
+      if (notFoundMarkers.some((m) => title.includes(m) || body.includes(m))) {
+        failures.push(`${routePath}: rendered the not-found page`)
+        continue
+      }
+      for (const needle of mustContain ?? []) {
+        if (!body.toLowerCase().includes(needle.toLowerCase())) {
+          failures.push(`${routePath}: missing expected content "${needle}"`)
+        }
+      }
+    }
+    expect(failures, `Public route checks failed:\n${failures.join('\n')}`).toEqual([])
   })
 
   test('login page loads', async ({ page }) => {
