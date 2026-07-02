@@ -64,6 +64,7 @@ for (const project of projects) {
   });
 }
 
-test('keep-alive: at least 16 projects configured', () => {
-  expect(projects.length, `Only ${projects.length} projects configured — check env vars`).toBeGreaterThanOrEqual(16);
+test('keep-alive: at least 15 projects configured', () => {
+  // 16 mapped minus Arivioo (paused, no env secret). BelegPilot + SignalForgeAI sunset 2026-07-02.
+  expect(projects.length, `Only ${projects.length} projects configured — check env vars`).toBeGreaterThanOrEqual(15);
 });
