@@ -47,6 +47,14 @@ test.describe('ReplyFlow — Production Monitor', () => {
     }
   })
 
+  // The onboarding wizard (OnboardingGate) auto-opens for users without a
+  // completed onboarding — which the monitor test user never completes — and
+  // its modal blocks every interaction test. ReplyFlow ships a test seam for
+  // exactly this: rf_e2e_no_onboarding=1 suppresses the gate (OnboardingGate.tsx).
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('rf_e2e_no_onboarding', '1'))
+  })
+
   // ── Existing tests ──────────────────────────────────────────────────
 
   // ── Public routes: manifest-driven ──────────────────────────────────
