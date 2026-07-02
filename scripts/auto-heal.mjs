@@ -30,7 +30,6 @@ const PROJECT_CONFIG = {
   LaunchReady: { repo: 'Arivioo/launchready', workflow: 'deploy.yml', branch: 'main' },
   SignalScore: { repo: 'Arivioo/signalscore', workflow: 'deploy.yml', branch: 'main' },
   Predivo: { repo: 'Arivioo/predivo', workflow: 'deploy.yml', branch: 'main' },
-  'APIs (predivo.ch)': { repo: 'Arivioo/APIs', workflow: 'deploy.yml', branch: 'main' },
 }
 
 // Patterns that indicate the SITE is broken (not just a test flake)

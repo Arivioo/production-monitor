@@ -16,7 +16,6 @@ const REPOS_REQUIRING_KEEPALIVE = [
   'Arivioo/signalscore',
   'Arivioo/launchready',
   'Arivioo/Valrano',
-  'Arivioo/api-dashboard',
   'Arivioo/BoatBuddy',
   'Arivioo/jass-tour-ui-kit',
   'Arivioo/Cursor_Arivioo',

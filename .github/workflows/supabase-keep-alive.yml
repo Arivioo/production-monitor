@@ -26,7 +26,7 @@ jobs:
             # BelegPilot + SignalForgeAI — SUNSET 2026-07-02 (projects decommissioned)
             ["JassTourUIKit"]="https://dkxdlovwzsxnepoteebk.supabase.co|sb_publishable_9RAQoEYJz6TuSOW9Z5E52g_vd7EmU1a"
             ["ValranoStaging"]="https://vfwpcgdkrwqhdivfzmrg.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmd3BjZ2RrcndxaGRpdmZ6bXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTM0MjIsImV4cCI6MjA5NDc2OTQyMn0.oKmklW0md_-S5tqKT0fg-2Vz0lVh_qDf9jRvm3tqbHs"
-            ["APIs"]="https://pjsxzjjhlwjqpkvsopuj.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqc3h6ampobHdqcXBrdnNvcHVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3ODUxMTQsImV4cCI6MjA4NzM2MTExNH0.6mP3YmT93oudfsGb19NOEKWQMtIojUE2d3p-VgH_qeo"
+            # APIs — SUNSET 2026-07-02 (API Dashboard decommissioned)
           )
 
           FAILED=0

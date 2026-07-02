@@ -326,7 +326,6 @@ function main() {
 
 function resolveProjectDir(projectName) {
   const map = {
-    'APIs (predivo.ch)': 'apis',
     BackOffice: 'backoffice',
     Predivo: 'predivo',
     ReplyFlow: 'replyflow',

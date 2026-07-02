@@ -89,11 +89,6 @@ jobs:
           VALRANO_SERVICE_ROLE_KEY: ${{ secrets.VALRANO_SERVICE_ROLE_KEY }}
           VALRANO_ANON_KEY: ${{ secrets.VALRANO_ANON_KEY }}
           VALRANO_SUPABASE_ACCESS_TOKEN: ${{ secrets.VALRANO_SUPABASE_ACCESS_TOKEN }}
-          # APIs (predivo.ch)
-          APIS_URL: https://predivo.ch
-          APIS_SUPABASE_URL: ${{ secrets.APIS_SUPABASE_URL }}
-          APIS_SERVICE_ROLE_KEY: ${{ secrets.APIS_SERVICE_ROLE_KEY }}
-          APIS_ANON_KEY: ${{ secrets.APIS_ANON_KEY }}
           # Keep-alive only (no production site)
           JASSTOUR_SUPABASE_URL: ${{ secrets.JASSTOUR_SUPABASE_URL }}
           JASSTOUR_ANON_KEY: ${{ secrets.JASSTOUR_ANON_KEY }}
