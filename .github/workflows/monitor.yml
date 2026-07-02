@@ -65,11 +65,6 @@ jobs:
           SHIPSOLO_SUPABASE_URL: ${{ secrets.SHIPSOLO_SUPABASE_URL }}
           SHIPSOLO_SERVICE_ROLE_KEY: ${{ secrets.SHIPSOLO_SERVICE_ROLE_KEY }}
           SHIPSOLO_ANON_KEY: ${{ secrets.SHIPSOLO_ANON_KEY }}
-          # BelegPilot
-          BELEGPILOT_URL: https://belegpilot.predivo.ch
-          BELEGPILOT_SUPABASE_URL: ${{ secrets.BELEGPILOT_SUPABASE_URL }}
-          BELEGPILOT_SERVICE_ROLE_KEY: ${{ secrets.BELEGPILOT_SERVICE_ROLE_KEY }}
-          BELEGPILOT_ANON_KEY: ${{ secrets.BELEGPILOT_ANON_KEY }}
           # Arivioo
           ARIVIOO_URL: https://arivioo.com
           ARIVIOO_SUPABASE_URL: ${{ secrets.ARIVIOO_SUPABASE_URL }}
@@ -102,8 +97,6 @@ jobs:
           # Keep-alive only (no production site)
           JASSTOUR_SUPABASE_URL: ${{ secrets.JASSTOUR_SUPABASE_URL }}
           JASSTOUR_ANON_KEY: ${{ secrets.JASSTOUR_ANON_KEY }}
-          SIGNALFORGE_SUPABASE_URL: ${{ secrets.SIGNALFORGE_SUPABASE_URL }}
-          SIGNALFORGE_ANON_KEY: ${{ secrets.SIGNALFORGE_ANON_KEY }}
           # Staging projects (keep-alive)
           BACKOFFICE_STAGING_SUPABASE_URL: ${{ secrets.BACKOFFICE_STAGING_SUPABASE_URL }}
           BACKOFFICE_STAGING_ANON_KEY: ${{ secrets.BACKOFFICE_STAGING_ANON_KEY }}

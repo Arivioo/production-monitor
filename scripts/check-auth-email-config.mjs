@@ -41,8 +41,6 @@ const ACCOUNTS = {
     { ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour', warn: 'PRE-LAUNCH MVP - uses GoTrue built-in mailer via supabase.auth.signUp() (jass-tour-ui-kit Auth.tsx:92). Configure custom SMTP/hook + rate_limit_email_sent>=10 BEFORE public launch.' },
   ],
   LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'ShipSolo' }],
-  BELEGPILOT: [{ ref: 'lybpfwzpoiutuqggbixg', name: 'BelegPilot' }],
-  SIGNALFORGEAI: [{ ref: 'xioqgsybkhjijkciinmu', name: 'SignalForgeAI' }],
   DISTRIBUTIONOS: [
     { ref: 'jxjpbmkgmuunpayqgbsx', name: 'DistributionOS' },
     { ref: 'mkdeftmubrkseyrrbzvp', name: 'Valrano' },

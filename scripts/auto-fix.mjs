@@ -333,7 +333,6 @@ function resolveProjectDir(projectName) {
     ChannelMover: 'ytmigration',
     ScoutCopilot: 'scoutcopilot',
     ShipSolo: 'shipsolo',
-    BelegPilot: 'belegpilot',
     Arivioo: 'arivioo',
     LaunchReady: 'launchready',
     SignalScore: 'signalscore',

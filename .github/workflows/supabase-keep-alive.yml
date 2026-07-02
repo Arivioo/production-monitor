@@ -22,9 +22,8 @@ jobs:
             ["ScoutCopilot"]="https://rlcsuqwqzoqjykdiqjye.supabase.co|sb_publishable_OJIxBF49Tis6_-nsUSQDQg_IOckCy2S"
             ["LaunchReady"]="https://hcfeoescybfngjsphekq.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjZmVvZXNjeWJmbmdqc3BoZWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNDY3MzcsImV4cCI6MjA4ODcyMjczN30.Qyj0VH0fQlaRguMLGKhEc8xSN4aWmjfGwTrvZ6HVEkk"
             ["DistributionOS"]="https://jxjpbmkgmuunpayqgbsx.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4anBibWtnbXV1bnBheXFnYnN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE0MjgsImV4cCI6MjA4OTQxNzQyOH0.6QC2w93bJFYb-aiCvZ_ydC1tm48jXddvdM8mIw5bxBI"
-            ["BelegPilot"]="https://lybpfwzpoiutuqggbixg.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5YnBmd3pwb2l1dHVxZ2diaXhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzOTQyODksImV4cCI6MjA4ODk3MDI4OX0.-HXZcqdxLF1OcXAegTeT5Fkrm6bVSmw0y7JfCGhHuU8"
             # Arivioo — PAUSED (Supabase project inactive, excluded from keep-alive)
-            ["SignalForgeAI"]="https://xioqgsybkhjijkciinmu.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhpb3Fnc3lia2hqaWprY2lpbm11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3ODc4ODMsImV4cCI6MjA5NTM2Mzg4M30.esuI-k1A3cl7Vw_CTagtb5CWe6j5b71JD1jKg0n8gYw"
+            # BelegPilot + SignalForgeAI — SUNSET 2026-07-02 (projects decommissioned)
             ["JassTourUIKit"]="https://dkxdlovwzsxnepoteebk.supabase.co|sb_publishable_9RAQoEYJz6TuSOW9Z5E52g_vd7EmU1a"
             ["ValranoStaging"]="https://vfwpcgdkrwqhdivfzmrg.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmd3BjZ2RrcndxaGRpdmZ6bXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTM0MjIsImV4cCI6MjA5NDc2OTQyMn0.oKmklW0md_-S5tqKT0fg-2Vz0lVh_qDf9jRvm3tqbHs"
             ["APIs"]="https://pjsxzjjhlwjqpkvsopuj.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqc3h6ampobHdqcXBrdnNvcHVqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE3ODUxMTQsImV4cCI6MjA4NzM2MTExNH0.6mP3YmT93oudfsGb19NOEKWQMtIojUE2d3p-VgH_qeo"

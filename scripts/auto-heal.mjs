@@ -26,13 +26,11 @@ const PROJECT_CONFIG = {
   ChannelMover: { repo: 'Arivioo/ChannelMover', workflow: 'deploy.yml', branch: 'main' },
   ReplyFlow: { repo: 'Arivioo/replyflow', workflow: 'deploy.yml', branch: 'main' },
   ShipSolo: { repo: 'Arivioo/Distribution-OS', workflow: 'deploy.yml', branch: 'main' },
-  BelegPilot: { repo: 'Arivioo/BelegPilot', workflow: 'deploy.yml', branch: 'main' },
   Arivioo: { repo: 'Arivioo/Cursor_Arivioo', workflow: 'deploy.yml', branch: 'main' },
   LaunchReady: { repo: 'Arivioo/launchready', workflow: 'deploy.yml', branch: 'main' },
   SignalScore: { repo: 'Arivioo/signalscore', workflow: 'deploy.yml', branch: 'main' },
   Predivo: { repo: 'Arivioo/predivo', workflow: 'deploy.yml', branch: 'main' },
   'APIs (predivo.ch)': { repo: 'Arivioo/APIs', workflow: 'deploy.yml', branch: 'main' },
-  SignalForgeAI: { repo: 'Arivioo/SignalForgeAI', workflow: 'deploy.yml', branch: 'main' },
 }
 
 // Patterns that indicate the SITE is broken (not just a test flake)

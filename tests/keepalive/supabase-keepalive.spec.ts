@@ -25,7 +25,6 @@ function getProjects(): SupabaseProject[] {
     'ReplyFlow':               { urlEnv: 'REPLYFLOW_SUPABASE_URL',             keyEnv: 'REPLYFLOW_ANON_KEY' },
     'ReplyFlow Staging':       { urlEnv: 'REPLYFLOW_STAGING_SUPABASE_URL',     keyEnv: 'REPLYFLOW_STAGING_ANON_KEY' },
     'ShipSolo':                { urlEnv: 'SHIPSOLO_SUPABASE_URL',              keyEnv: 'SHIPSOLO_ANON_KEY' },
-    'BelegPilot':              { urlEnv: 'BELEGPILOT_SUPABASE_URL',            keyEnv: 'BELEGPILOT_ANON_KEY' },
     'Arivioo':                 { urlEnv: 'ARIVIOO_SUPABASE_URL',               keyEnv: 'ARIVIOO_ANON_KEY' },
     'SignalScore':             { urlEnv: 'SIGNALSCORE_SUPABASE_URL',           keyEnv: 'SIGNALSCORE_ANON_KEY' },
     'SignalScore Staging':     { urlEnv: 'SIGNALSCORE_STAGING_SUPABASE_URL',   keyEnv: 'SIGNALSCORE_STAGING_ANON_KEY' },
@@ -33,7 +32,6 @@ function getProjects(): SupabaseProject[] {
     'Valrano Staging':         { urlEnv: 'VALRANO_STAGING_SUPABASE_URL',       keyEnv: 'VALRANO_STAGING_ANON_KEY' },
     'APIs':                    { urlEnv: 'APIS_SUPABASE_URL',                  keyEnv: 'APIS_ANON_KEY' },
     'BeizeJassTour':           { urlEnv: 'JASSTOUR_SUPABASE_URL',              keyEnv: 'JASSTOUR_ANON_KEY' },
-    'SignalForgeAI':           { urlEnv: 'SIGNALFORGE_SUPABASE_URL',           keyEnv: 'SIGNALFORGE_ANON_KEY' },
     'BoatBuddy':               { urlEnv: 'BOATBUDDY_SUPABASE_URL',             keyEnv: 'BOATBUDDY_ANON_KEY' },
     'BoatBuddy Staging':       { urlEnv: 'BOATBUDDY_STAGING_SUPABASE_URL',     keyEnv: 'BOATBUDDY_STAGING_ANON_KEY' },
   };
