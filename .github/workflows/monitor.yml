@@ -118,7 +118,7 @@ jobs:
           SMTP_PORT: '465'
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          ALERT_EMAIL: roger@mueller.ro
+          ALERT_EMAIL: rogmueller1976@gmail.com
           # Test user
           TEST_EMAIL: healthcheck-test@predivo.ch
 
@@ -145,7 +145,7 @@ jobs:
           SMTP_PORT: '465'
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          ALERT_EMAIL: roger@mueller.ro
+          ALERT_EMAIL: rogmueller1976@gmail.com
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Send resolution email if previous run failed
@@ -156,7 +156,7 @@ jobs:
           SMTP_PORT: '465'
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          ALERT_EMAIL: roger@mueller.ro
+          ALERT_EMAIL: rogmueller1976@gmail.com
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
           FORCE_RESOLVED_EMAIL: ${{ inputs.force_resolved_email }}
