@@ -235,9 +235,19 @@ test.describe('ReplyFlow — Production Monitor', () => {
     const reviewsHeading = page.locator('h2', { hasText: /Needs Reply|Reviews/ })
     await expect(reviewsHeading).toBeVisible({ timeout: 15_000 })
 
-    // Quick-action links must be present
-    await expect(page.locator('a, button').filter({ hasText: 'Generate AI Replies' }).first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator('a').filter({ hasText: /View All Reviews|View all/i }).first()).toBeVisible({ timeout: 15_000 })
+    // Quick-action row: since 2219de3 (no dead actions without a set-up business)
+    // the primary action is "Generate AI Replies" only when setup is complete;
+    // fresh accounts (like the monitor user) get "Set Up Business"/"Finish Setup"
+    // and no "View All Reviews" link. Accept either state.
+    const generateAction = page.locator('a, button').filter({ hasText: 'Generate AI Replies' }).first()
+    const setupAction = page.locator('a, button').filter({ hasText: /Set Up Business|Finish Setup/i }).first()
+    const hasGenerate = await generateAction.isVisible({ timeout: 15_000 }).catch(() => false)
+    const hasSetup = hasGenerate ? false : await setupAction.isVisible({ timeout: 3_000 }).catch(() => false)
+    expect(hasGenerate || hasSetup, 'Quick-action row must show either "Generate AI Replies" or a setup CTA').toBeTruthy()
+    if (hasGenerate) {
+      // Business is set up — the secondary "View All Reviews" link must render too
+      await expect(page.locator('a').filter({ hasText: /View All Reviews|View all/i }).first()).toBeVisible({ timeout: 15_000 })
+    }
 
     // The reviews section must show either review cards, "All caught up!", or a setup empty-state.
     const emptyState = page.locator('p').filter({ hasText: /Set up your business|No reviews yet|All caught up/i }).first()
@@ -382,13 +392,22 @@ test.describe('ReplyFlow — Production Monitor', () => {
     // Navigate via URL to avoid desktop-vs-mobile nav ambiguity.
     await page.goto(`${SITE_URL}/app/settings?tab=business`, { waitUntil: 'networkidle' })
 
-    // Business tab must render the business name input
+    // Business tab: since the connect-first onboarding redesign, accounts with
+    // no business (like the monitor user) get a "No business set up" empty state
+    // with a Set Up Business CTA instead of the form (BusinessTab.tsx). Accept
+    // either state; when the form renders, both fields must be present.
     const businessNameInput = page.locator('#settings-business-name')
-    await expect(businessNameInput).toBeVisible({ timeout: 15_000 })
-
-    // Business type select must be present
-    const businessTypeSelect = page.locator('#settings-business-type')
-    await expect(businessTypeSelect).toBeVisible({ timeout: 10_000 })
+    const noBusinessState = page.locator('p', { hasText: 'No business set up' }).first()
+    const hasForm = await businessNameInput.isVisible({ timeout: 15_000 }).catch(() => false)
+    const hasEmpty = hasForm ? false : await noBusinessState.isVisible({ timeout: 3_000 }).catch(() => false)
+    expect(hasForm || hasEmpty, 'Business tab must show either the business form or the no-business empty state').toBeTruthy()
+    if (hasForm) {
+      const businessTypeSelect = page.locator('#settings-business-type')
+      await expect(businessTypeSelect).toBeVisible({ timeout: 10_000 })
+    } else {
+      // Empty state must offer the setup CTA
+      await expect(page.getByRole('button', { name: /Set Up Business/i }).first()).toBeVisible({ timeout: 10_000 })
+    }
 
     // ── Switch to Billing tab ──────────────────────────────────────────
     await page.goto(`${SITE_URL}/app/settings?tab=billing`, { waitUntil: 'networkidle' })
