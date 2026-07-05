@@ -74,3 +74,16 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           ALERT_EMAIL: rogmueller1976@gmail.com
+
+      # Emails when previously-escalated workflows are green again (diff computed by
+      # automation-status.mjs against the previously published report). Sends only
+      # when /tmp/automation-resolved.json is non-empty.
+      - name: Notify resolved escalations
+        if: always() && steps.collect.outcome == 'success'
+        run: node scripts/send-automation-resolved.mjs
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: rogmueller1976@gmail.com

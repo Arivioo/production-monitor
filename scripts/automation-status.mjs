@@ -149,6 +149,29 @@ const report = {
 writeFileSync('/tmp/automation-status.json', JSON.stringify(report, null, 2))
 console.log(`\nSummary: ${green} green, ${red} red, ${unknown} unknown — ${escalations.length} escalation(s)`)
 
+// --- Resolution detection: diff against the PREVIOUSLY published report ---
+// Must run BEFORE the FTP upload below overwrites the published file. Any escalation
+// that was in the last published report but is no longer escalated AND whose workflow
+// is now green gets a "[AUTOMATION RESOLVED]" email (send-automation-resolved.mjs).
+let previousEscalations = []
+try {
+  const prevRes = await fetch('https://backoffice.predivo.ch/automation-status.json')
+  if (prevRes.ok) previousEscalations = (await prevRes.json())?.summary?.escalations ?? []
+} catch { /* unreachable/first run — no resolution emails this round */ }
+
+const stillEscalated = new Set(escalations.map((e) => `${e.repo}/${e.workflow}`))
+const resolvedEscalations = previousEscalations.filter((e) => {
+  if (stillEscalated.has(`${e.repo}/${e.workflow}`)) return false
+  const repo = repos.find((r) => r.repo === e.repo)
+  const wf = repo?.workflows?.find((w) => w.name === e.workflow)
+  return wf?.conclusion === 'success' // only report resolved when it is genuinely green now
+})
+writeFileSync('/tmp/automation-resolved.json', JSON.stringify(resolvedEscalations, null, 2))
+if (resolvedEscalations.length > 0) {
+  console.log(`${resolvedEscalations.length} previously-escalated workflow(s) now green (resolution email will be sent):`)
+  for (const e of resolvedEscalations) console.log(`  ${e.name} / ${e.workflow} (was red ${e.redHours}h)`)
+}
+
 // --- FTP upload to backoffice.predivo.ch (same target as project-data.json) ---
 const { FTP_HOST, FTP_USER, FTP_PASS } = process.env
 if (FTP_HOST && FTP_USER && FTP_PASS) {
