@@ -113,8 +113,10 @@ test.describe('LaunchReady — Production Monitor', () => {
     // Dashboard renders "My Audits" heading for authenticated users
     const auditsHeading = page.locator('h2', { hasText: 'My Audits' })
     await expect(auditsHeading).toBeVisible({ timeout: 15_000 })
-    // Either audit cards (.space-y-3 > div) or the empty-state prompt must be present
-    const auditCards = page.locator('.space-y-3 > div')
+    // Either audit cards or the empty-state prompt must be present. Scope to the
+    // "My Audits" section — MonitoredSites renders its own `.space-y-3` above it.
+    const auditCards = page.locator('h2', { hasText: 'My Audits' })
+      .locator('xpath=../following-sibling::div[contains(@class,"space-y-3")]/div')
     const emptyPrompt = page.locator('p', { hasText: 'No audits yet' })
     const hasCards = await auditCards.count() > 0
     const hasEmpty = await emptyPrompt.isVisible().catch(() => false)
@@ -128,7 +130,12 @@ test.describe('LaunchReady — Production Monitor', () => {
     // Wait for loading spinner to disappear before reading dashboard state
     await page.locator('[role="status"]').waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {})
     await page.locator('h2', { hasText: 'My Audits' }).waitFor({ timeout: 15_000 })
-    const auditCards = page.locator('.space-y-3 > div')
+    // Scope to the "My Audits" section only. The dashboard's MonitoredSites
+    // component renders its own `.space-y-3` list ABOVE the audits section, so a
+    // bare `.space-y-3 > div` would grab a monitored-site card (which has no
+    // score <span>, only a ScoreRing) as the "first audit card" and fail.
+    const auditCards = page.locator('h2', { hasText: 'My Audits' })
+      .locator('xpath=../following-sibling::div[contains(@class,"space-y-3")]/div')
     const count = await auditCards.count()
     if (count > 0) {
       const firstCard = auditCards.first()
