@@ -161,6 +161,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE_RESOLVED_EMAIL: ${{ inputs.force_resolved_email }}
 
+      # Dead-man's-switch: ping healthchecks.io on every successful run. If this monitor
+      # ever stops firing (GitHub disables the cron on repo inactivity, runner never starts),
+      # the ping stops arriving and healthchecks.io emails hello@predivo.ch after the grace
+      # period. This is what would have caught the 66-day-red ScoutCopilot CI: a monitor with
+      # no heartbeat fails silent.
+      - name: Heartbeat (healthchecks.io dead-man's-switch)
+        if: success()
+        run: curl -fsS -m 10 --retry 3 https://hc-ping.com/ed11efd1-42e5-48d9-9b26-97dd6c284721 || true
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
