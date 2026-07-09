@@ -46,5 +46,8 @@ jobs:
           done
 
           if [ "$FAILED" -gt 0 ]; then
-            echo "::warning::${FAILED} project(s) failed keep-alive ping"
+            # Fail the job (not just warn) so a broken ping is VISIBLE and the monitor
+            # alert fires — a silent "green" here let ChannelMover's ping fail unnoticed.
+            echo "::error::${FAILED} project(s) failed keep-alive ping — a project may pause"
+            exit 1
           fi
