@@ -387,27 +387,23 @@ test.describe('ReplyFlow — Production Monitor', () => {
     // Danger zone section must be present
     await expect(page.locator('h3', { hasText: 'Danger Zone' }).first()).toBeVisible({ timeout: 10_000 })
 
-    // ── Switch to Business tab ─────────────────────────────────────────
+    // ── Switch to Locations tab (formerly "Business") ──────────────────
     // The settings page uses URL query param ?tab=<key> for navigation.
-    // Navigate via URL to avoid desktop-vs-mobile nav ambiguity.
+    // Since the connect-first settings redesign, the old ?tab=business (and
+    // ?tab=integrations) deep links normalize to the Locations tab
+    // (SettingsPage.tsx normalizeTab → LocationsTab.tsx). Navigate via URL to
+    // avoid desktop-vs-mobile nav ambiguity.
     await page.goto(`${SITE_URL}/app/settings?tab=business`, { waitUntil: 'networkidle' })
 
-    // Business tab: since the connect-first onboarding redesign, accounts with
-    // no business (like the monitor user) get a "No business set up" empty state
-    // with a Set Up Business CTA instead of the form (BusinessTab.tsx). Accept
-    // either state; when the form renders, both fields must be present.
-    const businessNameInput = page.locator('#settings-business-name')
-    const noBusinessState = page.locator('p', { hasText: 'No business set up' }).first()
-    const hasForm = await businessNameInput.isVisible({ timeout: 15_000 }).catch(() => false)
-    const hasEmpty = hasForm ? false : await noBusinessState.isVisible({ timeout: 3_000 }).catch(() => false)
-    expect(hasForm || hasEmpty, 'Business tab must show either the business form or the no-business empty state').toBeTruthy()
-    if (hasForm) {
-      const businessTypeSelect = page.locator('#settings-business-type')
-      await expect(businessTypeSelect).toBeVisible({ timeout: 10_000 })
-    } else {
-      // Empty state must offer the setup CTA
-      await expect(page.getByRole('button', { name: /Set Up Business/i }).first()).toBeVisible({ timeout: 10_000 })
-    }
+    // The Locations tab always renders its "Locations" heading. Accounts with
+    // no location (like the monitor user) get a "No locations yet" empty state
+    // with an "Add Location" CTA; accounts with locations render a location
+    // detail card. Accept either — the heading + one of the two states.
+    await expect(page.getByRole('heading', { name: 'Locations', exact: true }).first())
+      .toBeVisible({ timeout: 15_000 })
+    // Both states (empty "No locations yet" and a rendered location detail) expose
+    // an "Add Location" control, so it's the stable cross-state assertion.
+    await expect(page.getByRole('button', { name: /Add Location/i }).first()).toBeVisible({ timeout: 10_000 })
 
     // ── Switch to Billing tab ──────────────────────────────────────────
     await page.goto(`${SITE_URL}/app/settings?tab=billing`, { waitUntil: 'networkidle' })
