@@ -9,6 +9,7 @@ on:
 jobs:
   update-dashboard:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v5
@@ -44,6 +45,7 @@ jobs:
   # has been red for >48h. Separate job so it runs even if the dashboard update fails.
   automation-status:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
 
