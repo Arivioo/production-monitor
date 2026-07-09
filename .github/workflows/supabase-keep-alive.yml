@@ -14,19 +14,19 @@ jobs:
       - name: Ping all projects
         run: |
           declare -A PROJECTS=(
-            ["Valrano"]="https://mkdeftmubrkseyrrbzvp.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZGVmdG11YnJrc2V5cnJienZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MTIzODIsImV4cCI6MjA5Mzk4ODM4Mn0.lnNUslHt--2_GzOZFB_UH1mVd0bfGfWTnHIU3e7Umwc"
+            ["Valrano"]="https://mkdeftmubrkseyrrbzvp.supabase.co|sb_publishable_z3rlat9q1JtLO65f5ESpLg_rN2MOi1x"
             ["ChannelMover"]="https://qswluvqunswggfmesdcs.supabase.co|${{ secrets.YTMIGRATION_ANON_KEY }}"
             ["ReplyFlow"]="https://dqmhsdzldkxngwjrxois.supabase.co|${{ secrets.REPLYFLOW_ANON_KEY }}"
-            ["ReplyFlowStaging"]="https://cuvqzwvyovxvvvuddtjd.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1dnF6d3Z5b3Z4dnZ2dWRkdGpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzODIzODMsImV4cCI6MjA5NDk1ODM4M30.x-CshhNWg-B9EUn9idoNmjYlkD7c16Mhmg6ZXxjHxgE"
-            ["BackOffice"]="https://xoecpzfsskalvjrtcbbl.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhvZWNwemZzc2thbHZqcnRjYmJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NDI5MDAsImV4cCI6MjA5MTExODkwMH0.SIdOOrrG5FoTMTmKReGRz0WPMwSENmmr-eYSxAHP7Xw"
+            ["ReplyFlowStaging"]="https://cuvqzwvyovxvvvuddtjd.supabase.co|sb_publishable_yFX-Cd6KledrN4s98vgthw_R2z_n2vo"
+            ["BackOffice"]="https://xoecpzfsskalvjrtcbbl.supabase.co|sb_publishable_-hG97-xSmiEetdowiPpmdQ_lhV4h5TZ"
             ["SignalScore"]="https://ogdpgufptemcgyszmjek.supabase.co|${{ secrets.SIGNALSCORE_ANON_KEY }}"
             ["ScoutCopilot"]="https://rlcsuqwqzoqjykdiqjye.supabase.co|sb_publishable_OJIxBF49Tis6_-nsUSQDQg_IOckCy2S"
-            ["LaunchReady"]="https://hcfeoescybfngjsphekq.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjZmVvZXNjeWJmbmdqc3BoZWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxNDY3MzcsImV4cCI6MjA4ODcyMjczN30.Qyj0VH0fQlaRguMLGKhEc8xSN4aWmjfGwTrvZ6HVEkk"
-            ["DistributionOS"]="https://jxjpbmkgmuunpayqgbsx.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp4anBibWtnbXV1bnBheXFnYnN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NDE0MjgsImV4cCI6MjA4OTQxNzQyOH0.6QC2w93bJFYb-aiCvZ_ydC1tm48jXddvdM8mIw5bxBI"
+            ["LaunchReady"]="https://hcfeoescybfngjsphekq.supabase.co|sb_publishable_FW4tiXgcCw2RYCtLDcHqag_lxq6Aco4"
+            ["DistributionOS"]="https://jxjpbmkgmuunpayqgbsx.supabase.co|sb_publishable_8Q_iepRvUKjASo9_3RagaA_q7uaSCMr"
             # Arivioo — PAUSED (Supabase project inactive, excluded from keep-alive)
             # BelegPilot + SignalForgeAI — SUNSET 2026-07-02 (projects decommissioned)
             ["JassTourUIKit"]="https://dkxdlovwzsxnepoteebk.supabase.co|sb_publishable_9RAQoEYJz6TuSOW9Z5E52g_vd7EmU1a"
-            ["ValranoStaging"]="https://vfwpcgdkrwqhdivfzmrg.supabase.co|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmd3BjZ2RrcndxaGRpdmZ6bXJnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxOTM0MjIsImV4cCI6MjA5NDc2OTQyMn0.oKmklW0md_-S5tqKT0fg-2Vz0lVh_qDf9jRvm3tqbHs"
+            ["ValranoStaging"]="https://vfwpcgdkrwqhdivfzmrg.supabase.co|sb_publishable_vA9cXoaDFmwrL0GV4uVLqg_iWaKyc0s"
             # APIs — SUNSET 2026-07-02 (API Dashboard decommissioned)
           )
 
