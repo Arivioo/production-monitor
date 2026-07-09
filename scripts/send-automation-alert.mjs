@@ -67,6 +67,7 @@ const transporter = createTransport({
   host: SMTP_HOST,
   port: parseInt(SMTP_PORT || '465'),
   secure: true,
+  family: 4, // force IPv4: SMTP host resolves to an IPv6 addr unreachable from GH runners (ENETUNREACH)
   auth: { user: SMTP_USER, pass: SMTP_PASS },
 })
 
