@@ -19,7 +19,7 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v5
@@ -33,6 +33,27 @@ jobs:
 
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Clear shared OTP test inbox (keeps IMAP search fast -> prevents run timeouts)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import imaplib, ssl, os
+          ctx = ssl._create_unverified_context()
+          m = imaplib.IMAP4_SSL(os.environ['IMAP_HOST'], int(os.environ.get('IMAP_PORT') or 993), ssl_context=ctx)
+          m.login(os.environ['IMAP_USER'], os.environ['IMAP_PASS'])
+          m.select('INBOX')
+          ids = m.search(None, 'ALL')[1][0].split()
+          if ids:
+              m.store(b','.join(ids), '+FLAGS', '\\Deleted'); m.expunge()
+          print(f'cleared {len(ids)} messages from the shared OTP test inbox')
+          m.logout()
+          PY
+        env:
+          IMAP_HOST: ${{ secrets.IMAP_HOST }}
+          IMAP_PORT: ${{ secrets.IMAP_PORT }}
+          IMAP_USER: ${{ secrets.IMAP_USER }}
+          IMAP_PASS: ${{ secrets.IMAP_PASS }}
 
       - name: Run production monitor
         run: npx playwright test --project=chromium
