@@ -2,7 +2,7 @@ name: Production Monitor
 
 on:
   schedule:
-    - cron: '*/60 * * * *'  # Every 60 minutes
+    - cron: '37 * * * *'  # Hourly at :37 — off-peak; top-of-hour (:00) is GitHub's most-contended slot and gets dropped/delayed, tripping the healthchecks.io heartbeat
   workflow_dispatch:         # Manual trigger
     inputs:
       force_resolved_email:
