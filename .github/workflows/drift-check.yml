@@ -1,0 +1,49 @@
+name: Staging-Prod Drift Check
+
+# Nightly detection of schema / constraint / cron drift between each product's
+# staging and production Supabase projects, plus unsubstituted <<placeholders>>
+# in live cron rows. Migrations are applied per-environment by hand, so drift
+# is otherwise invisible until it breaks something (investigation report §8:
+# staging at 1 of prod's 9 crons; CHECK constraint missing a job type killed
+# Auto-Pilot enqueue silently). A red run here IS the alert.
+
+on:
+  schedule:
+    - cron: '43 4 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: drift-check
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # send-alert.mjs needs nodemailer; the drift script itself is dep-free.
+      - run: npm ci
+
+      - name: Check staging-prod drift (schema, constraints, cron, placeholders)
+        run: node scripts/check-drift.mjs
+        env:
+          SUPABASE_TOKEN_REPLYFLOW: ${{ secrets.SUPABASE_TOKEN_REPLYFLOW }}
+          SUPABASE_TOKEN_CHANNELMOVER: ${{ secrets.SUPABASE_TOKEN_CHANNELMOVER }}
+          SUPABASE_TOKEN_MUELLER: ${{ secrets.SUPABASE_TOKEN_MUELLER }}
+
+      - name: Send alert on failure
+        if: failure()
+        run: node scripts/send-alert.mjs
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: rogmueller1976@gmail.com

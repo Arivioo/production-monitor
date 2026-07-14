@@ -186,24 +186,24 @@ test.describe('SignalScore — Production Monitor', () => {
 
     // Type a company name — the input debounces at 2 chars
     await searchInput.fill('Migros')
-    await page.waitForTimeout(1500) // allow search debounce + API roundtrip
 
-    // Either results appeared (CommandGroup) or "No companies found." or searching spinner
-    const hasResults = await page.locator('[cmdk-group-heading]').isVisible().catch(() => false)
-    const hasEmpty = await page.locator('text=No companies found.').isVisible().catch(() => false)
-    const isSearching = await page.locator('text=Searching...').isVisible().catch(() => false)
+    // "Migros" MUST return results: it is a guaranteed-present Zefix entry, so
+    // an empty state here means the search-companies -> Zefix pipeline (the
+    // core product) is down. The old assertion accepted "No companies found."
+    // — a full Zefix outage would have passed monitoring (investigation
+    // report §7.2). Generous timeout covers debounce + Zefix roundtrip.
+    await expect(
+      page.locator('[cmdk-group-heading]'),
+      'company search for "Migros" returned no results — search-companies/Zefix pipeline down?',
+    ).toBeVisible({ timeout: 20_000 })
 
-    expect(hasResults || hasEmpty || isSearching).toBe(true)
+    // Click the first result and verify company card + "Run Company Check" button appear
+    const firstResult = page.locator('[cmdk-item]').first()
+    await firstResult.click()
+    await page.waitForTimeout(300)
 
-    // If results loaded, click the first one and verify company card + "Run Company Check" button appear
-    if (hasResults) {
-      const firstResult = page.locator('[cmdk-item]').first()
-      await firstResult.click()
-      await page.waitForTimeout(300)
-
-      // After selection, search card is replaced by company detail card with "Run Company Check" button
-      await expect(page.locator('button:has-text("Run Company Check")')).toBeVisible({ timeout: 5_000 })
-    }
+    // After selection, search card is replaced by company detail card with "Run Company Check" button
+    await expect(page.locator('button:has-text("Run Company Check")')).toBeVisible({ timeout: 5_000 })
   })
 
   test('check history: page structure, search input, and status filters render', async ({ page }) => {

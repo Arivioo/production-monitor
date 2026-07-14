@@ -39,8 +39,13 @@ export async function listDeployedFunctions(
 }
 
 /**
- * POST to a function and report whether it is reachable. Any status except 404
- * means it is deployed and responding (401/400/500 without auth/body are fine).
+ * POST to a function and report whether it is healthy. 401/403/400/422 without
+ * auth/body are fine (the function booted and rejected us). 404 means not
+ * deployed. Any 5xx means the function is DOWN — a crashed function, a dead
+ * edge secret, or a BOOT_ERROR all surface as 5xx, and "reachable = not 404"
+ * let every one of those pass for weeks (ReplyFlow post-reply 503 ×2 days,
+ * ChannelMover SB_SECRET_KEY ×5 days — see
+ * Audits/BREAKAGE_ROOT_CAUSE_INVESTIGATION_2026-07-14.md §8).
  */
 export async function isFunctionReachable(
   supabaseUrl: string,
@@ -51,5 +56,5 @@ export async function isFunctionReachable(
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
   })
-  return { slug, status: res.status, reachable: res.status !== 404 }
+  return { slug, status: res.status, reachable: res.status !== 404 && res.status < 500 }
 }

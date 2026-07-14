@@ -143,6 +143,35 @@ jobs:
           # Test user
           TEST_EMAIL: healthcheck-test@predivo.ch
 
+      # Out-of-band canaries: dead/rotated secrets and vendor retirements never
+      # enter git, so only a live-credential probe can catch them (the class
+      # behind ChannelMover's 5-day outage — investigation report §8). A canary
+      # failure fails the run and rides the same alert email + healthchecks chain.
+      - name: Out-of-band canaries (live credentials, vendor liveness)
+        run: node scripts/run-canaries.mjs
+        env:
+          REPLYFLOW_SUPABASE_URL: ${{ secrets.REPLYFLOW_SUPABASE_URL }}
+          REPLYFLOW_SERVICE_ROLE_KEY: ${{ secrets.REPLYFLOW_SERVICE_ROLE_KEY }}
+          YTMIGRATION_SUPABASE_URL: ${{ secrets.YTMIGRATION_SUPABASE_URL }}
+          YTMIGRATION_SERVICE_ROLE_KEY: ${{ secrets.YTMIGRATION_SERVICE_ROLE_KEY }}
+          SIGNALSCORE_SUPABASE_URL: ${{ secrets.SIGNALSCORE_SUPABASE_URL }}
+          SIGNALSCORE_SERVICE_ROLE_KEY: ${{ secrets.SIGNALSCORE_SERVICE_ROLE_KEY }}
+          VALRANO_SUPABASE_URL: ${{ secrets.VALRANO_SUPABASE_URL }}
+          VALRANO_SERVICE_ROLE_KEY: ${{ secrets.VALRANO_SERVICE_ROLE_KEY }}
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
+          LAUNCHREADY_SUPABASE_URL: ${{ secrets.LAUNCHREADY_SUPABASE_URL }}
+          LAUNCHREADY_SERVICE_ROLE_KEY: ${{ secrets.LAUNCHREADY_SERVICE_ROLE_KEY }}
+          SCOUTCOPILOT_SUPABASE_URL: ${{ secrets.SCOUTCOPILOT_SUPABASE_URL }}
+          SCOUTCOPILOT_SERVICE_ROLE_KEY: ${{ secrets.SCOUTCOPILOT_SERVICE_ROLE_KEY }}
+          SHIPSOLO_SUPABASE_URL: ${{ secrets.SHIPSOLO_SUPABASE_URL }}
+          SHIPSOLO_SERVICE_ROLE_KEY: ${{ secrets.SHIPSOLO_SERVICE_ROLE_KEY }}
+          BOATBUDDY_SUPABASE_URL: ${{ secrets.BOATBUDDY_SUPABASE_URL }}
+          BOATBUDDY_SERVICE_ROLE_KEY: ${{ secrets.BOATBUDDY_SERVICE_ROLE_KEY }}
+          # PAID-KEY GATE: unset until Roger approves — canaries self-skip loudly.
+          ANTHROPIC_API_KEY_CANARY: ${{ secrets.ANTHROPIC_API_KEY_CANARY }}
+          STRIPE_SECRET_KEY_CANARY: ${{ secrets.STRIPE_SECRET_KEY_CANARY }}
+
       - name: Auto-fix known failure patterns
         if: failure()
         run: node scripts/auto-fix.mjs || true
