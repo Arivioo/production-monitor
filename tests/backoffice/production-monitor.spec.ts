@@ -877,4 +877,66 @@ test.describe('BackOffice — Production Monitor', () => {
       ).toEqual([])
     })
   })
+
+  // ── Scraped API-balance freshness — catches a DEAD balance scraper ──────────
+  //
+  // The Anthropic + Gemini prepaid balances on the API dashboard have NO billing
+  // API — they are refreshed only by local Windows Scheduled Tasks that drive the
+  // dedicated Chrome (CDP :9222) every 4h. If a scraper silently dies (disabled key,
+  // moved/archived repo, logged-out browser, deleted task, machine off > a day), the
+  // number just stops updating and NOTHING else signals it. This is exactly the
+  // failure that went unnoticed for ~2 weeks (2026-07). This test makes it LOUD:
+  // a stale balance fails the monitor → email + healthchecks alert.
+  //
+  // Threshold is deliberately generous (26h) so a normal overnight / short machine-off
+  // does NOT false-alarm; the scrapers run every 4h, so >26h stale means a genuinely
+  // broken updater, not idleness. Tune STALE_HOURS if the cadence changes.
+  test.describe('API dashboard — scraped balance freshness', () => {
+    const STALE_HOURS = 26
+    const SCRAPED_BALANCES = ['Anthropic Claude', 'Google Gemini']
+
+    test(`scraped balances refreshed within ${STALE_HOURS}h`, async () => {
+      const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+      const { data: entries, error: entErr } = await admin
+        .from('api_entries')
+        .select('id, name')
+        .in('name', SCRAPED_BALANCES)
+      expect(entErr, `api_entries query failed: ${entErr?.message}`).toBeNull()
+      expect(
+        (entries ?? []).map((e) => e.name).sort(),
+        `Expected scraped balance entries ${SCRAPED_BALANCES.join(', ')} in api_entries`,
+      ).toEqual([...SCRAPED_BALANCES].sort())
+
+      const nameById = new Map((entries ?? []).map((e) => [e.id as string, e.name as string]))
+      const { data: subs, error: subErr } = await admin
+        .from('api_subscriptions')
+        .select('api_entry_id, balance_override, balance_override_updated_at')
+        .in('api_entry_id', [...nameById.keys()])
+      expect(subErr, `api_subscriptions query failed: ${subErr?.message}`).toBeNull()
+
+      const now = Date.now()
+      const stale: string[] = []
+      for (const [id, name] of nameById) {
+        const sub = (subs ?? []).find((s) => s.api_entry_id === id)
+        if (!sub || sub.balance_override === null || !sub.balance_override_updated_at) {
+          stale.push(`${name}: no balance recorded (scraper never wrote one)`)
+          continue
+        }
+        const ageH = (now - new Date(sub.balance_override_updated_at).getTime()) / 3_600_000
+        if (ageH > STALE_HOURS) {
+          stale.push(`${name}: ${ageH.toFixed(1)}h old (last value ${sub.balance_override})`)
+        }
+      }
+
+      expect(
+        stale,
+        `Balance scraper looks DEAD — stale > ${STALE_HOURS}h:\n${stale.join('\n')}\n\n` +
+          `Fix: make sure the dedicated Chrome (port 9222) is running + logged in, then:\n` +
+          `  schtasks /Run /TN AnthropicBalanceScrape\n` +
+          `  schtasks /Run /TN GeminiBalanceScrape\n` +
+          `Details: BackOffice/docs/Credentials.txt → "API-Dashboard balance scrapers".`,
+      ).toEqual([])
+    })
+  })
 })
