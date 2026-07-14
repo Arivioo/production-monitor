@@ -931,10 +931,13 @@ test.describe('BackOffice — Production Monitor', () => {
 
       expect(
         stale,
-        `Balance scraper looks DEAD — stale > ${STALE_HOURS}h:\n${stale.join('\n')}\n\n` +
-          `Fix: make sure the dedicated Chrome (port 9222) is running + logged in, then:\n` +
-          `  schtasks /Run /TN AnthropicBalanceScrape\n` +
-          `  schtasks /Run /TN GeminiBalanceScrape\n` +
+        `Balance updater looks DEAD — stale > ${STALE_HOURS}h:\n${stale.join('\n')}\n\n` +
+          `Anthropic Claude: read server-side by the sync-usage edge fn (6h GH cron) from the\n` +
+          `  Console /prepaid/credits API using the stored session cookie. Stale usually = the\n` +
+          `  cookie expired/was invalidated (password change / logout). Re-bootstrap it:\n` +
+          `  api_entries.scrape_session_cookie ← a fresh sessionKey from platform.claude.com.\n` +
+          `Google Gemini: local Windows task (dedicated Chrome :9222). Ensure Chrome is up +\n` +
+          `  logged in, then: schtasks /Run /TN GeminiBalanceScrape\n` +
           `Details: BackOffice/docs/Credentials.txt → "API-Dashboard balance scrapers".`,
       ).toEqual([])
     })
