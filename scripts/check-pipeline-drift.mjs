@@ -27,13 +27,21 @@ import { readFileSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 
-// name, GitHub owner/repo (for CI fetch), local dir name (for local mode)
+// name, GitHub owner/repo (for CI fetch), local dir, staged (=staging-gated → §4a applies).
+// Static/push-to-prod repos (staged:false): §4a N/A, but §1/§3 FTP resilience + cancel-in-progress still apply.
 const FLEET = [
-  { name: 'ReplyFlow',    repo: 'Arivioo/ReplyFlow',    dir: 'replyflow' },
-  { name: 'SignalScore',  repo: 'Arivioo/signalscore',  dir: 'signalscore' },
-  { name: 'ChannelMover', repo: 'Arivioo/ChannelMover',  dir: 'ChannelMover' },
-  { name: 'BoatBuddy',    repo: 'Arivioo/BoatBuddy',     dir: 'BoatBuddy' },
-  { name: 'Valrano',      repo: 'Arivioo/Valrano',       dir: 'Valrano' },
+  { name: 'ReplyFlow',       repo: 'Arivioo/ReplyFlow',        dir: 'replyflow',       staged: true },
+  { name: 'SignalScore',     repo: 'Arivioo/signalscore',      dir: 'signalscore',     staged: true },
+  { name: 'ChannelMover',    repo: 'Arivioo/ChannelMover',     dir: 'ChannelMover',    staged: true },
+  { name: 'BoatBuddy',       repo: 'Arivioo/BoatBuddy',        dir: 'BoatBuddy',       staged: true },
+  { name: 'Valrano',         repo: 'Arivioo/Valrano',          dir: 'Valrano',         staged: true },
+  { name: 'BackOffice',      repo: 'Arivioo/BackOffice',       dir: 'BackOffice',      staged: false },
+  { name: 'predivo',         repo: 'Arivioo/predivo',          dir: 'predivo',         staged: false },
+  { name: 'ScoutCopilot',    repo: 'Arivioo/ScoutCopilot',     dir: 'ScoutCopilot',    staged: false },
+  { name: 'Distribution-OS', repo: 'Arivioo/Distribution-OS',  dir: 'Distribution-OS', staged: false },
+  { name: 'launchready',     repo: 'Arivioo/launchready',      dir: 'launchready',     staged: false },
+  { name: 'arivioo',         repo: 'Arivioo/arivioo',          dir: 'arivioo',         staged: false },
+  { name: 'jass-tour-ui-kit',repo: 'Arivioo/jass-tour-ui-kit', dir: 'jass-tour-ui-kit',staged: false },
 ]
 
 const LOCAL_ROOT = process.env.LOCAL_FLEET_ROOT
@@ -70,20 +78,34 @@ for (const p of FLEET) {
   let yml
   try { yml = loadYaml(p) } catch (e) { fail(`${p.name}: cannot load deploy.yml — ${String(e).slice(0, 160)}`); continue }
 
-  // §4a-1 — the prod deploy job must not re-run staging via a needs on the E2E gate.
-  // Match only a real YAML `needs:` KEY (line-anchored) — not the string inside an
-  // explanatory comment like "does NOT `needs: e2e-staging`" (comment lines start with #).
-  if (/^\s*needs:\s*(\[[^\]]*e2e-staging|e2e-staging)\b/m.test(yml)) {
-    fail(`${p.name}: a job still has "needs: ...e2e-staging" — prod must gate on the recorded staging run, not re-run it (§4a)`)
-  } else ok(`${p.name}: no job re-runs the staging E2E chain via needs (§4a)`)
+  // ── §4a — only staging-gated repos (static push-to-prod repos have no separate prod dispatch) ──
+  if (p.staged) {
+    // §4a-1 — the prod deploy job must not re-run staging via a needs on the E2E gate.
+    // Match only a real YAML `needs:` KEY (line-anchored) — not the string inside an
+    // explanatory comment like "does NOT `needs: e2e-staging`" (comment lines start with #).
+    if (/^\s*needs:\s*(\[[^\]]*e2e-staging|e2e-staging)\b/m.test(yml)) {
+      fail(`${p.name}: a job still has "needs: ...e2e-staging" — prod must gate on the recorded staging run, not re-run it (§4a)`)
+    } else ok(`${p.name}: no job re-runs the staging E2E chain via needs (§4a)`)
 
-  // §4a-2 — the staging-gate step must be present (proves the recorded-result gate exists).
-  if (yml.includes('Verify staging gate')) ok(`${p.name}: "Verify staging gate" step present (§4a)`)
-  else fail(`${p.name}: missing the "Verify staging gate" step — prod deploy has no recorded-staging-result gate (§4a)`)
+    // §4a-2 — the staging-gate step must be present (proves the recorded-result gate exists).
+    if (yml.includes('Verify staging gate')) ok(`${p.name}: "Verify staging gate" step present (§4a)`)
+    else fail(`${p.name}: missing the "Verify staging gate" step — prod deploy has no recorded-staging-result gate (§4a)`)
 
-  // §4a-3 — the staging chain root must be push-only.
-  if (yml.includes("if: github.event_name == 'push'")) ok(`${p.name}: staging chain gated push-only (§4a)`)
-  else fail(`${p.name}: no "if: github.event_name == 'push'" gate — staging chain may re-run on prod dispatch (§4a)`)
+    // §4a-3 — the staging chain root must be push-only.
+    if (yml.includes("if: github.event_name == 'push'")) ok(`${p.name}: staging chain gated push-only (§4a)`)
+    else fail(`${p.name}: no "if: github.event_name == 'push'" gate — staging chain may re-run on prod dispatch (§4a)`)
+  }
+
+  // ── Universal checks (apply to EVERY pipeline, staged or static) ──
+
+  // Concurrency — never cancel a mid-flight FTP mirror (leaves prod half-applied; breakage §6).
+  if (/cancel-in-progress:\s*true/.test(yml)) fail(`${p.name}: concurrency has "cancel-in-progress: true" — set false so a mid-flight FTP mirror is never cancelled (breakage §6)`)
+  else ok(`${p.name}: cancel-in-progress not true`)
+
+  // §3 — any FTP `mirror --reverse` deploy must be wrapped in a retry loop (marker: `until [ $n`).
+  if (/mirror\s+--reverse/.test(yml) && !/until \[ \$n/.test(yml)) {
+    fail(`${p.name}: FTP "mirror --reverse" present but no retry loop ("until [ $n") — wrap it (§3, intermittent-FTP-hang class)`)
+  } else if (/mirror\s+--reverse/.test(yml)) ok(`${p.name}: FTP mirror steps wrapped in a retry loop (§3)`)
 
   // §3e — no bare `run: supabase functions deploy` one-liner (all wrapped in retry).
   const bare = (yml.match(/run:\s*supabase functions deploy/g) || []).length
