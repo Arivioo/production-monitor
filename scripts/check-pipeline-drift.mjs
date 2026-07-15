@@ -40,7 +40,7 @@ const FLEET = [
   { name: 'ScoutCopilot',    repo: 'Arivioo/ScoutCopilot',     dir: 'ScoutCopilot',    staged: false },
   { name: 'Distribution-OS', repo: 'Arivioo/Distribution-OS',  dir: 'Distribution-OS', staged: false },
   { name: 'launchready',     repo: 'Arivioo/launchready',      dir: 'launchready',     staged: false },
-  { name: 'arivioo',         repo: 'Arivioo/arivioo',          dir: 'arivioo',         staged: false },
+  { name: 'arivioo',         repo: 'Arivioo/Cursor_Arivioo',   dir: 'arivioo',         staged: false },
   { name: 'jass-tour-ui-kit',repo: 'Arivioo/jass-tour-ui-kit', dir: 'jass-tour-ui-kit',staged: false },
 ]
 
@@ -116,6 +116,15 @@ for (const p of FLEET) {
   // §3c — Supabase CLI must be pinned, never `version: latest`.
   if (/version:\s*latest/.test(yml)) fail(`${p.name}: uses "version: latest" for a setup action — pin the Supabase CLI (§3c)`)
   else ok(`${p.name}: no "version: latest" (§3c)`)
+
+  // Lockfile integrity — project deps must install with `npm ci` (enforces the
+  // committed lockfile). `npm install` silently tolerates/mutates a drifted
+  // package-lock.json — exactly how the arivioo vitest/esbuild drift reached prod
+  // undetected. `npm install -g <cli>` (global tooling like the Supabase CLI) is exempt.
+  // Strip inline comments so a `# npm ci (not npm install)` note doesn't self-trip.
+  const badInstall = yml.split('\n').filter((line) => /npm install(?!\s+-g)/.test(line.split('#')[0])).length
+  if (badInstall > 0) fail(`${p.name}: ${badInstall} "npm install" for project deps — use "npm ci" to enforce lockfile integrity (lockfile-drift class)`)
+  else ok(`${p.name}: project deps installed with npm ci (lockfile-enforcing)`)
 }
 
 console.log('')
