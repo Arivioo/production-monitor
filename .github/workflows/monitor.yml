@@ -148,6 +148,7 @@ jobs:
       # behind ChannelMover's 5-day outage — investigation report §8). A canary
       # failure fails the run and rides the same alert email + healthchecks chain.
       - name: Out-of-band canaries (live credentials, vendor liveness)
+        if: always()  # independent probe — must run even if the monitor step above failed (a dead secret often fails both)
         run: node scripts/run-canaries.mjs
         env:
           REPLYFLOW_SUPABASE_URL: ${{ secrets.REPLYFLOW_SUPABASE_URL }}
