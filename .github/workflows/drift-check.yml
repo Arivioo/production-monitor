@@ -38,6 +38,16 @@ jobs:
           SUPABASE_TOKEN_CHANNELMOVER: ${{ secrets.SUPABASE_TOKEN_CHANNELMOVER }}
           SUPABASE_TOKEN_MUELLER: ${{ secrets.SUPABASE_TOKEN_MUELLER }}
 
+      # Deploy-PIPELINE conformance: every fleet deploy.yml must still match the hardened
+      # standard (prod gates on the recorded staging result instead of re-running staging;
+      # functions-deploy retried; CLI pinned). Catches a future edit regressing the pipeline
+      # back to the fragile shape that caused the 2026-07-15 prod-promotion failures.
+      # Skips cleanly until FLEET_READ_TOKEN (classic PAT, repo:read) is set.
+      - name: Check deploy-pipeline drift (deploy.yml conformance)
+        run: node scripts/check-pipeline-drift.mjs
+        env:
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+
       - name: Send alert on failure
         if: failure()
         run: node scripts/send-alert.mjs
