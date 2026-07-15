@@ -30,6 +30,9 @@ const PROJECT_CONFIG = {
   LaunchReady: { repo: 'Arivioo/launchready', workflow: 'deploy.yml', branch: 'main' },
   SignalScore: { repo: 'Arivioo/signalscore', workflow: 'deploy.yml', branch: 'main' },
   Predivo: { repo: 'Arivioo/predivo', workflow: 'deploy.yml', branch: 'main' },
+  BoatBuddy: { repo: 'Arivioo/BoatBuddy', workflow: 'deploy.yml', branch: 'main' },
+  // grom-uploader is a local Cloudflare Worker (no GitHub repo/workflow), so it
+  // cannot be auto-healed by dispatching a deploy — the monitor spec alerts only.
 }
 
 // Patterns that indicate the SITE is broken (not just a test flake)
