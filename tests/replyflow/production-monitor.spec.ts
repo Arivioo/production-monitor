@@ -236,14 +236,14 @@ test.describe('ReplyFlow — Production Monitor', () => {
     await expect(reviewsHeading).toBeVisible({ timeout: 15_000 })
 
     // Quick-action row: since 2219de3 (no dead actions without a set-up business)
-    // the primary action is "Generate AI Replies" only when setup is complete;
-    // fresh accounts (like the monitor user) get "Set Up Business"/"Finish Setup"
-    // and no "View All Reviews" link. Accept either state.
-    const generateAction = page.locator('a, button').filter({ hasText: 'Generate AI Replies' }).first()
+    // the primary action is "Review & Reply" (formerly "Generate AI Replies") only when
+    // setup is complete; fresh accounts (like the monitor user) get "Set Up Business"/"Finish
+    // Setup" and no "View All Reviews" link. Accept either state.
+    const generateAction = page.locator('a, button').filter({ hasText: /Review & Reply/i }).first()
     const setupAction = page.locator('a, button').filter({ hasText: /Set Up Business|Finish Setup/i }).first()
     const hasGenerate = await generateAction.isVisible({ timeout: 15_000 }).catch(() => false)
     const hasSetup = hasGenerate ? false : await setupAction.isVisible({ timeout: 3_000 }).catch(() => false)
-    expect(hasGenerate || hasSetup, 'Quick-action row must show either "Generate AI Replies" or a setup CTA').toBeTruthy()
+    expect(hasGenerate || hasSetup, 'Quick-action row must show either "Review & Reply" or a setup CTA').toBeTruthy()
     if (hasGenerate) {
       // Business is set up — the secondary "View All Reviews" link must render too
       await expect(page.locator('a').filter({ hasText: /View All Reviews|View all/i }).first()).toBeVisible({ timeout: 15_000 })
