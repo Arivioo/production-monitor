@@ -46,7 +46,12 @@ jobs:
       - name: Check deploy-pipeline drift (deploy.yml conformance)
         run: node scripts/check-pipeline-drift.mjs
         env:
-          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+          # Reuse DASHBOARD_PAT — the existing fleet-wide token this repo already uses to
+          # read every repo's contents (keepalive-workflow-presence) and dispatch deploys
+          # (auto-heal). FLEET_READ_TOKEN was never created, so this check skipped silently
+          # in CI (dormant safety net); DASHBOARD_PAT activates it. Falls back to
+          # FLEET_READ_TOKEN if a dedicated least-privilege token is added later.
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN || secrets.DASHBOARD_PAT }}
 
       - name: Send alert on failure
         if: failure()
