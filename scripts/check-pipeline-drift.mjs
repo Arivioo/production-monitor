@@ -125,6 +125,25 @@ for (const p of FLEET) {
   const badInstall = yml.split('\n').filter((line) => /npm install(?!\s+-g)/.test(line.split('#')[0])).length
   if (badInstall > 0) fail(`${p.name}: ${badInstall} "npm install" for project deps — use "npm ci" to enforce lockfile integrity (lockfile-drift class)`)
   else ok(`${p.name}: project deps installed with npm ci (lockfile-enforcing)`)
+
+  // §3f — command-substitution FTP steps (VAR=$(lftp …)) MUST carry `set +e`.
+  // GitHub runs steps with `bash -eo pipefail`; a failing `OUT=$(lftp …)` assignment
+  // aborts the step on the FIRST attempt, BEFORE the retry loop can iterate — so the
+  // retry loop is dead code (the class fixed fleet-wide 2026-07-16; a transient FTP
+  // flake on attempt 1 otherwise fails the deploy with no retry). The `if lftp …; then`
+  // form puts the failing command in an `if` condition and is already -e-safe. Rule:
+  // if the file has ANY unguarded `VAR=$(lftp` command substitution, it must also
+  // contain a `set +e`. Prevents a future edit from silently regressing the fix.
+  const cmdSubLftp = yml
+    .split('\n')
+    .filter((l) => /^\s*[A-Za-z_][A-Za-z0-9_]*=\$\(lftp\b/.test(l) && !/\|\|/.test(l)).length
+  if (cmdSubLftp > 0 && !/^\s*set \+e\s*$/m.test(yml)) {
+    fail(`${p.name}: uses VAR=$(lftp…) command substitution but has no "set +e" — under bash -e the assignment aborts before the retry loop runs, so every FTP retry is dead code (§3f)`)
+  } else if (cmdSubLftp > 0) {
+    ok(`${p.name}: command-substitution FTP steps protected by set +e (§3f)`)
+  } else {
+    ok(`${p.name}: no unguarded VAR=$(lftp command substitution — §3f n/a (if-lftp form)`)
+  }
 }
 
 console.log('')
