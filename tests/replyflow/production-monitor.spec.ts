@@ -265,8 +265,8 @@ test.describe('ReplyFlow — Production Monitor', () => {
     const heading = page.locator('h1', { hasText: 'Reviews' })
     await expect(heading).toBeVisible({ timeout: 15_000 })
 
-    // All five status tabs must be present (role="tab" after a11y audit)
-    for (const label of ['All', 'Needs Reply', 'Draft Ready', 'Edited', 'Posted']) {
+    // All status tabs must be present (role="tab" after a11y audit)
+    for (const label of ['All', 'New & Drafts', 'Draft Ready', 'Edited', 'Scheduled', 'Posted']) {
       await expect(page.getByRole('tab', { name: new RegExp(label, 'i') }).first()).toBeVisible({ timeout: 10_000 })
     }
 
@@ -284,8 +284,8 @@ test.describe('ReplyFlow — Production Monitor', () => {
     await sortSelect.selectOption('newest')
     await expect(sortSelect).toHaveValue('newest')
 
-    // Click the "Needs Reply" status tab
-    await page.getByRole('tab', { name: /Needs Reply/i }).first().click()
+    // Click the "New & Drafts" status tab (formerly "Needs Reply")
+    await page.getByRole('tab', { name: /New & Drafts/i }).first().click()
     // The right panel should show the placeholder when nothing is selected, or reviews are visible
     const rightPanel = page.locator('text=/Select a review to view details|No reviews match/i').first()
     await expect(rightPanel).toBeVisible({ timeout: 10_000 })
