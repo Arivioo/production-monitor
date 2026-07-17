@@ -1,0 +1,44 @@
+name: Flaky-Deploy Auto-Retry
+
+# Phase 1b of the agentic auto-remediation plan (docs/PLAN-agentic-auto-remediation.md).
+# Cross-fleet poll: reruns a flaky/infra deploy failure ONCE so a one-off blip (staging
+# mid-deploy, an auth-setup timeout, an FTP hiccup) self-heals instead of sitting red and
+# paging Roger. It NEVER touches a prod promotion (workflow_dispatch), a stale commit, or a
+# real code failure (lint/build/unit) — see scripts/flaky-retry.mjs for the full safety model.
+#
+# Kill-switch: set repo variable FLAKY_RETRY_DISABLED=1 (Settings → Variables) to pause it.
+
+on:
+  schedule:
+    # Every 30 min — fast enough to catch a flaky staging deploy soon after it fails,
+    # slow enough to stay cheap (the run just lists recent runs across the fleet).
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run: report candidates without reruning anything'
+        type: boolean
+        default: false
+
+concurrency:
+  group: flaky-retry
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Auto-retry flaky deploy failures
+        run: node scripts/flaky-retry.mjs
+        env:
+          # Fleet-wide PAT (repo + actions:write) — same token auto-heal uses to dispatch deploys.
+          GH_TOKEN: ${{ secrets.DASHBOARD_PAT }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          FLAKY_RETRY_DISABLED: ${{ vars.FLAKY_RETRY_DISABLED }}
