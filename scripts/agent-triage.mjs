@@ -1,0 +1,210 @@
+/**
+ * Agent-Triage Tier — Phase 2 of the agentic auto-remediation plan (Tier B).
+ *
+ * Runs AFTER auto-fix (fast patterns) and auto-heal (redeploy) in monitor.yml, on the
+ * failures they couldn't resolve — the "novel" class that today just produces a bare
+ * escalation email. It spawns a headless Claude agent that DIAGNOSES each remaining failure
+ * and remediates it within Tier-B policy:
+ *
+ *   - Monitor-spec DRIFT (a project intentionally renamed a label/route the spec asserts on)
+ *       → fix the spec in THIS repo + commit + push. (Safe class, own repo, low blast radius.)
+ *   - Real REGRESSION (the product genuinely broke)
+ *       → open a PR on the target repo with a diagnosis. NEVER auto-ship app code.
+ *   - Flaky / site-down → already handled upstream (retry / auto-heal); just annotate.
+ *   - Secret / config / unknown → escalate WITH a written root-cause hypothesis.
+ *
+ * The agent's verdict is written to triage-results.json and folded into the alert email, so
+ * Roger gets "diagnosis + what it did," not a red row.
+ *
+ * ── PAID-KEY GATE ──────────────────────────────────────────────────────────────────────
+ * This tier calls the paid Anthropic API. Per Roger's standing rule it stays DORMANT until he
+ * explicitly enables it: it self-skips (loudly, exit 0) unless BOTH
+ *   - repo variable  AGENT_TRIAGE_ENABLED = 1   (the on-switch / kill-switch)
+ *   - secret         AGENT_TRIAGE_API_KEY set   (a dedicated key, spend-capped by Roger)
+ * are present. Building it wired-but-off mirrors the run-canaries.mjs Anthropic-canary gate.
+ */
+
+import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { execSync } from 'child_process'
+
+const RESULTS_PATH = 'test-results/results.json'
+const AUTOFIX_PATH = 'auto-fix-results.json'
+const VERDICT_PATH = 'triage-verdict.json'   // the agent writes this as its final action
+const OUTPUT_PATH = 'triage-results.json'     // send-alert.mjs reads this
+const MAX_TURNS = 40
+const MODEL = 'claude-opus-4-8'
+const AGENT_TIMEOUT_MS = 10 * 60 * 1000
+
+// Project → { spec dir, GitHub repo, deploy branch }. Mirrors auto-fix.resolveProjectDir + flaky-retry.
+const PROJECTS = {
+  BackOffice:   { dir: 'backoffice',   repo: 'Arivioo/backoffice',       branch: 'main' },
+  ReplyFlow:    { dir: 'replyflow',    repo: 'Arivioo/replyflow',        branch: 'main' },
+  ChannelMover: { dir: 'ytmigration',  repo: 'Arivioo/ChannelMover',     branch: 'main' },
+  ScoutCopilot: { dir: 'scoutcopilot', repo: 'Arivioo/ScoutCopilot',     branch: 'master' },
+  ShipSolo:     { dir: 'shipsolo',     repo: 'Arivioo/distribution-os',  branch: 'master' },
+  Arivioo:      { dir: 'arivioo',      repo: 'Arivioo/Cursor_Arivioo',   branch: 'main' },
+  LaunchReady:  { dir: 'launchready',  repo: 'Arivioo/launchready',      branch: 'master' },
+  SignalScore:  { dir: 'signalscore',  repo: 'Arivioo/signalscore',      branch: 'main' },
+  Valrano:      { dir: 'valrano',      repo: 'Arivioo/Valrano',          branch: 'main' },
+  Predivo:      { dir: 'predivo',      repo: 'Arivioo/predivo',          branch: 'master' },
+  BoatBuddy:    { dir: 'boatbuddy',    repo: 'Arivioo/BoatBuddy',        branch: 'main' },
+}
+
+// ── Failure extraction (mirrors auto-fix.mjs / send-alert.mjs) ──────────────────────────
+function extractFailures(suite, parentName) {
+  const failures = []
+  const isDescribe = suite.title && !suite.title.endsWith('.spec.ts')
+  const name = isDescribe ? suite.title.replace(/ — Production Monitor$/, '') : parentName || suite.title || 'Unknown'
+  for (const spec of suite.specs ?? []) {
+    for (const test of spec.tests ?? []) {
+      if (test.status === 'unexpected') {
+        const last = test.results?.[test.results.length - 1]
+        const errorMsg = last?.errors?.[0]?.message || last?.error?.message || 'Unknown error'
+        const loc = last?.errors?.[0]?.location
+        const attachments = (last?.attachments ?? []).map((a) => a.path).filter(Boolean)
+        failures.push({
+          project: name,
+          test: spec.title || 'Unknown test',
+          error: errorMsg.replace(/\x1b\[[0-9;]*m/g, '').split('\n').slice(0, 8).join('\n').slice(0, 1200),
+          file: loc?.file || '',
+          line: loc?.line || 0,
+          screenshots: attachments.filter((p) => /\.(png|jpg)$/i.test(p)),
+        })
+      }
+    }
+  }
+  for (const child of suite.suites ?? []) failures.push(...extractFailures(child, name))
+  return failures
+}
+
+// Prefer auto-fix's escalation list (the failures it couldn't pattern-fix); fall back to the raw report.
+function loadEscalations() {
+  if (existsSync(AUTOFIX_PATH)) {
+    try {
+      const esc = JSON.parse(readFileSync(AUTOFIX_PATH, 'utf-8')).escalations ?? []
+      if (esc.length) return esc
+    } catch { /* fall through */ }
+  }
+  if (!existsSync(RESULTS_PATH)) return []
+  try {
+    const results = JSON.parse(readFileSync(RESULTS_PATH, 'utf-8'))
+    return (results.suites ?? []).flatMap((s) => extractFailures(s, null))
+  } catch { return [] }
+}
+
+function specPathFor(project) {
+  const p = PROJECTS[project]
+  if (!p) return null
+  const path = `tests/${p.dir}/production-monitor.spec.ts`
+  return existsSync(path) ? path : null
+}
+
+// ── Tier-B policy (agent system prompt) ─────────────────────────────────────────────────
+const SYSTEM_POLICY = `You are the auto-remediation triage agent for a fleet of production SaaS apps monitored by Playwright specs in THIS repo (production-monitor). The hourly monitor just failed on one or more checks that the fast pattern-fixer could NOT resolve. Diagnose each and remediate within STRICT policy.
+
+You are running headless in CI with real write access (git push to this repo, gh with a fleet-wide PAT). Act conservatively and deterministically.
+
+For EACH failing check, first CLASSIFY by investigating:
+- Read the failing spec (I give you its path) and the exact assertion that failed.
+- Use gh to inspect the TARGET project repo's RECENT commits (e.g. \`gh api repos/<repo>/commits?per_page=15\`) and diffs.
+- Check the LIVE site if useful (curl the URL).
+
+CLASSES and the ONLY permitted action for each:
+1. MONITOR-DRIFT — the product intentionally changed (a renamed label/route/testid the spec asserts on), and a recent target-repo commit proves the change was deliberate. ACTION: edit the drifted assertion in the spec file in THIS repo to match the new product, then \`git add\`, \`git commit\` (message prefixed "[agent-triage] "), and \`git push\`. This is the safe self-heal.
+2. REGRESSION — the product genuinely broke (no intentional change explains it; the live site is wrong). ACTION: DO NOT edit app code and DO NOT push to the target repo. Instead open a PR on the target repo describing the regression + a suggested fix: create a branch via the GitHub API, commit the suggested patch to it, and \`gh pr create\`. If you cannot safely construct a patch, do NOT open a PR — escalate instead with the diagnosis and a suggested patch in prose.
+3. FLAKY / TRANSIENT or SITE-DOWN — a timeout/network blip, or the site was briefly down (already being redeployed by auto-heal). ACTION: none — just annotate; the retry/auto-heal paths own these.
+4. SECRET / CONFIG — a dead/rotated key or auth rate-limit (often a canary failure). ACTION: none automatic — escalate with exactly which credential/service and how to rotate it.
+5. UNKNOWN — none of the above fit. ACTION: escalate with your best written root-cause hypothesis.
+
+HARD RULES:
+- NEVER edit application source in a target repo directly, and NEVER push to any repo other than THIS one (production-monitor). Target-repo changes are PRs only.
+- NEVER run destructive gh (no pr merge, no run cancel, no delete, no workflow dispatch/run).
+- Only touch spec files under tests/**. Do not change monitor infrastructure/scripts.
+- If uncertain between DRIFT and REGRESSION, treat it as REGRESSION (never silently rewrite a spec to match a broken product — that would mask a real bug).
+- Bound your work; do not loop.
+
+FINAL ACTION (required): use the Write tool to write ${VERDICT_PATH} in the repo root as JSON:
+{"verdicts":[{"project":"","test":"","class":"MONITOR-DRIFT|REGRESSION|FLAKY|SITE-DOWN|SECRET|UNKNOWN","action":"what you did (commit sha / PR url / none)","diagnosis":"1-3 sentences","escalate":true|false,"suggestedFix":"prose, only if escalating"}]}`
+
+function buildUserPrompt(escalations) {
+  const lines = ['The following monitor checks failed and were NOT auto-fixed. Triage each per policy.\n']
+  escalations.forEach((f, i) => {
+    const meta = PROJECTS[f.project]
+    const spec = specPathFor(f.project)
+    lines.push(`## Failure ${i + 1}`)
+    lines.push(`- Project: ${f.project}`)
+    lines.push(`- Target repo: ${meta ? meta.repo + ' (branch ' + meta.branch + ')' : 'unknown'}`)
+    lines.push(`- Test: ${f.test}`)
+    lines.push(`- Monitor spec: ${spec || 'not found — locate under tests/'}`)
+    if (f.file) lines.push(`- Failed at: ${f.file}:${f.line}`)
+    if (f.reason) lines.push(`- Why it reached you: ${f.reason}`)
+    if (f.screenshots?.length) lines.push(`- Screenshots: ${f.screenshots.join(', ')}`)
+    lines.push(`- Error:\n\`\`\`\n${f.error}\n\`\`\`\n`)
+  })
+  return lines.join('\n')
+}
+
+function main() {
+  const enabled = process.env.AGENT_TRIAGE_ENABLED === '1'
+  const hasKey = !!process.env.ANTHROPIC_API_KEY
+  if (!enabled || !hasKey) {
+    console.log(`⏭️  agent-triage SKIPPED (PAID-KEY GATE): AGENT_TRIAGE_ENABLED=${process.env.AGENT_TRIAGE_ENABLED || 'unset'}, ANTHROPIC_API_KEY ${hasKey ? 'set' : 'unset'}.`)
+    console.log('   To activate: set repo variable AGENT_TRIAGE_ENABLED=1 and secret AGENT_TRIAGE_API_KEY. Dormant until then.')
+    process.exit(0)
+  }
+
+  const escalations = loadEscalations()
+  if (escalations.length === 0) {
+    console.log('agent-triage: no unresolved failures to triage.')
+    process.exit(0)
+  }
+  console.log(`agent-triage: ${escalations.length} unresolved failure(s) → invoking Claude (${MODEL})...`)
+
+  // Clean any stale verdict from a prior run.
+  try { if (existsSync(VERDICT_PATH)) execSync(`rm -f ${VERDICT_PATH}`) } catch { /* noop */ }
+
+  const userPrompt = buildUserPrompt(escalations)
+  const allowedTools = [
+    'Read', 'Grep', 'Glob', 'Edit', 'Write',
+    'Bash(git:*)', 'Bash(gh api:*)', 'Bash(gh pr:*)', 'Bash(gh run view:*)',
+    'Bash(curl:*)', 'Bash(cat:*)', 'Bash(ls:*)', 'Bash(node:*)', 'Bash(npx playwright:*)',
+  ].join(',')
+
+  try {
+    // Headless Claude Code. --append-system-prompt injects the Tier-B policy; allowedTools
+    // whitelists exactly what triage needs (destructive gh is NOT included). Bounded turns + timeout.
+    const args = [
+      '-p', JSON.stringify(userPrompt),
+      '--append-system-prompt', JSON.stringify(SYSTEM_POLICY),
+      '--allowedTools', JSON.stringify(allowedTools),
+      '--max-turns', String(MAX_TURNS),
+      '--model', MODEL,
+      '--output-format', 'json',
+    ]
+    execSync(`claude ${args.join(' ')}`, {
+      stdio: 'inherit',
+      timeout: AGENT_TIMEOUT_MS,
+      env: { ...process.env, GIT_AUTHOR_NAME: 'Agent Triage', GIT_AUTHOR_EMAIL: 'noreply@predivo.ch', GIT_COMMITTER_NAME: 'Agent Triage', GIT_COMMITTER_EMAIL: 'noreply@predivo.ch' },
+    })
+  } catch (e) {
+    console.error('agent-triage: Claude run errored/timed out:', e.message?.split('\n')[0])
+  }
+
+  // Fold the agent's verdict into the alert payload.
+  let verdicts = []
+  if (existsSync(VERDICT_PATH)) {
+    try { verdicts = JSON.parse(readFileSync(VERDICT_PATH, 'utf-8')).verdicts ?? [] } catch { /* malformed */ }
+  }
+  const summary = {
+    ran: true,
+    escalationCount: escalations.length,
+    verdicts,
+    unresolvedEscalate: verdicts.filter((v) => v.escalate),
+    timestamp: new Date().toISOString(),
+  }
+  writeFileSync(OUTPUT_PATH, JSON.stringify(summary, null, 2))
+  console.log(`\nagent-triage: ${verdicts.length} verdict(s); ${summary.unresolvedEscalate.length} still need Roger.`)
+  verdicts.forEach((v) => console.log(`  [${v.class}] ${v.project}/${v.test} → ${v.action}`))
+}
+
+main()

@@ -91,6 +91,15 @@ if (existsSync(autoHealPath)) {
   } catch { /* ignore */ }
 }
 
+// Load agent-triage results if available (Phase 2 — Claude diagnosis + remediation of novel failures)
+let triageResults = { verdicts: [] }
+const triagePath = 'triage-results.json'
+if (existsSync(triagePath)) {
+  try {
+    triageResults = JSON.parse(readFileSync(triagePath, 'utf-8'))
+  } catch { /* ignore */ }
+}
+
 // If auto-fix resolved ALL failures, only send a summary (not an alert)
 const hasAutoFixes = autoFixResults.fixes.length > 0
 const allFixed = autoFixResults.escalations.length === 0 && hasAutoFixes
@@ -194,6 +203,23 @@ const html = `
           ${autoHealResults.skipped.map(s => `<li>${s.project}: ${s.reason}</li>`).join('')}
         </ul>
       </details>` : ''}
+      ${(triageResults.verdicts?.length) ? `
+      <h3 style="margin:20px 0 12px;font-size:15px;color:#2563eb">Agent Triage — Diagnosis &amp; Action (${triageResults.verdicts.length})</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="background:#eff6ff">
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Check</th>
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Class</th>
+          <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Diagnosis / Action</th>
+        </tr></thead>
+        <tbody>
+          ${triageResults.verdicts.map(v => `<tr>
+            <td style="padding:8px;border:1px solid #e5e7eb;white-space:nowrap">${v.project || ''}<br><span style="color:#6b7280;font-size:11px">${v.test || ''}</span></td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-weight:600;color:${v.escalate ? '#dc2626' : '#059669'}">${v.class || ''}</td>
+            <td style="padding:8px;border:1px solid #e5e7eb;font-size:12px">${v.diagnosis || ''}${v.action ? `<br><span style="color:#2563eb">→ ${v.action}</span>` : ''}${v.suggestedFix ? `<br><span style="color:#6b7280;font-size:11px">Suggested: ${v.suggestedFix}</span>` : ''}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <p style="font-size:12px;color:#6b7280;margin-top:8px">Green class = self-healed or handled; red = still needs you.</p>` : ''}
       ${GITHUB_RUN_URL ? `<p style="margin-top:16px"><a href="${GITHUB_RUN_URL}" style="color:#2563eb">View full run logs</a></p>` : ''}
       <p style="margin-top:16px;font-size:12px;color:#6b7280">
         Sent by production-monitor at ${new Date().toISOString()}
