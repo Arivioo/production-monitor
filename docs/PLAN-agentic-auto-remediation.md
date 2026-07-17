@@ -2,7 +2,14 @@
 
 **Goal:** a closed‑loop, self‑healing fleet. The monitor must not just *detect* and *alert* — it must auto‑*remediate* every failure it can safely resolve, and escalate to Roger only genuine unknowns, each with a written diagnosis. **Hard constraint: never silently mask a real regression.**
 
-> **STATUS (2026‑07‑17):** Autonomy **Tier B** chosen. **Phase 1a** (deploy‑status dashboard consistency) shipped. **Phase 1b** (flaky‑deploy auto‑retry) live on a 30‑min schedule. **Phase 2** (agent‑triage tier) built + wired + **dormant behind the PAID‑KEY GATE** — activate by setting repo variable `AGENT_TRIAGE_ENABLED=1` and secret `AGENT_TRIAGE_API_KEY` on Arivioo/production‑monitor. Phase 3 (drift prevention at source) not yet started.
+> **STATUS (2026‑07‑17): SHIPPED & LIVE.** Autonomy **Tier B**. **Phase 1a** (deploy‑status
+> dashboard consistency) shipped. **Phase 1b** (flaky‑deploy auto‑retry) live on a 30‑min schedule.
+> **Phase 2** (agent‑triage tier) built, validated, and **LIVE local‑first** — it runs on Roger's
+> **subscription** via the `AgentTriage-LocalRunner` Windows task (every 20 min, $0 API); the
+> cloud/API path (dedicated $25/mo‑capped key) is the **dormant fallback** (`AGENT_TRIAGE_ENABLED=0`,
+> flip to `1` when the desktop is off). Phase 3 (drift prevention at source) not yet started.
+>
+> **→ Operations, kill‑switches, config, and how it all fits together: [`AUTO-REMEDIATION-RUNBOOK.md`](./AUTO-REMEDIATION-RUNBOOK.md).**
 
 ---
 
