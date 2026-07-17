@@ -153,29 +153,38 @@ function main() {
     process.exit(0)
   }
 
+  const dryRun = process.env.AGENT_TRIAGE_DRY_RUN === '1'
   const escalations = loadEscalations()
   if (escalations.length === 0) {
     console.log('agent-triage: no unresolved failures to triage.')
     process.exit(0)
   }
-  console.log(`agent-triage: ${escalations.length} unresolved failure(s) → invoking Claude (${MODEL})...`)
+  console.log(`agent-triage: ${escalations.length} unresolved failure(s) → invoking Claude (${MODEL})${dryRun ? ' [DRY RUN — no writes]' : ''}...`)
 
   // Clean any stale verdict from a prior run.
   try { if (existsSync(VERDICT_PATH)) execSync(`rm -f ${VERDICT_PATH}`) } catch { /* noop */ }
 
   const userPrompt = buildUserPrompt(escalations)
-  const allowedTools = [
-    'Read', 'Grep', 'Glob', 'Edit', 'Write',
-    'Bash(git:*)', 'Bash(gh api:*)', 'Bash(gh pr:*)', 'Bash(gh run view:*)',
-    'Bash(curl:*)', 'Bash(cat:*)', 'Bash(ls:*)', 'Bash(node:*)', 'Bash(npx playwright:*)',
-  ].join(',')
+
+  // Read-only investigation tools + Write (for the verdict file only). Safe in dry-run.
+  const READ_ONLY = [
+    'Read', 'Grep', 'Glob', 'Write',
+    'Bash(gh api:*)', 'Bash(gh run view:*)', 'Bash(curl:*)', 'Bash(cat:*)', 'Bash(ls:*)',
+    'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)',
+  ]
+  // Write actions — only in live mode: edit+commit+push a drifted spec (this repo), open a PR (target).
+  const WRITE = ['Edit', 'Bash(git:*)', 'Bash(gh pr:*)', 'Bash(node:*)', 'Bash(npx playwright:*)']
+  const allowedTools = (dryRun ? READ_ONLY : [...READ_ONLY, ...WRITE]).join(',')
+
+  const DRY_NOTE = '\n\n⚠️ DRY RUN: Do NOT commit, push, edit files, or open PRs — investigate read-only and write ONLY triage-verdict.json. In each verdict\'s "action" field, describe what you WOULD have done, prefixed "[DRY-RUN would] ".'
+  const policy = dryRun ? SYSTEM_POLICY + DRY_NOTE : SYSTEM_POLICY
 
   try {
     // Headless Claude Code. --append-system-prompt injects the Tier-B policy; allowedTools
     // whitelists exactly what triage needs (destructive gh is NOT included). Bounded turns + timeout.
     const args = [
       '-p', JSON.stringify(userPrompt),
-      '--append-system-prompt', JSON.stringify(SYSTEM_POLICY),
+      '--append-system-prompt', JSON.stringify(policy),
       '--allowedTools', JSON.stringify(allowedTools),
       '--max-turns', String(MAX_TURNS),
       '--model', MODEL,
