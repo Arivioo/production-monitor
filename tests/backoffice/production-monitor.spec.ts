@@ -311,8 +311,9 @@ test.describe('BackOffice — Production Monitor', () => {
   test('sidebar navigation has key items', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_OPTS)
     await page.waitForLoadState('networkidle')
-    // Check for key nav items that exist in the sidebar (using actual labels from AppLayout.tsx)
-    const navItems = ['Dashboard', 'Kontakte', 'Projekte', 'Debitoren', 'Kreditoren', 'Buchhaltung']
+    // Check for key nav items that exist in the sidebar (using actual labels from src/lib/navigation.ts
+    // after the 2026-07-17 Console redesign: top-level items + expanded section children)
+    const navItems = ['Dashboard', 'Portfolio', 'Finanzen', 'Kontakte', 'Growth', 'Buchhaltung']
     for (const item of navItems) {
       await expect(
         page.locator(`text=${item}`).first(),
