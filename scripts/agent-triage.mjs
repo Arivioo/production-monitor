@@ -24,8 +24,8 @@
  * are present. Building it wired-but-off mirrors the run-canaries.mjs Anthropic-canary gate.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { execSync } from 'child_process'
+import { readFileSync, writeFileSync, existsSync, rmSync } from 'fs'
+import { execFileSync } from 'child_process'
 
 const RESULTS_PATH = 'test-results/results.json'
 const AUTOFIX_PATH = 'auto-fix-results.json'
@@ -146,12 +146,17 @@ function buildUserPrompt(escalations) {
 
 function main() {
   const enabled = process.env.AGENT_TRIAGE_ENABLED === '1'
+  // LOCAL mode = invoke the local Claude Code CLI authed via Roger's SUBSCRIPTION (no API key,
+  // no metered cost). This is the PREFERRED path — the desktop is always on. The paid API is a
+  // fallback used only when the local runner isn't available (see scripts/local-triage-runner.mjs).
+  const local = process.env.AGENT_TRIAGE_LOCAL === '1'
   const hasKey = !!process.env.ANTHROPIC_API_KEY
-  if (!enabled || !hasKey) {
-    console.log(`⏭️  agent-triage SKIPPED (PAID-KEY GATE): AGENT_TRIAGE_ENABLED=${process.env.AGENT_TRIAGE_ENABLED || 'unset'}, ANTHROPIC_API_KEY ${hasKey ? 'set' : 'unset'}.`)
-    console.log('   To activate: set repo variable AGENT_TRIAGE_ENABLED=1 and secret AGENT_TRIAGE_API_KEY. Dormant until then.')
+  if (!enabled || (!hasKey && !local)) {
+    console.log(`⏭️  agent-triage SKIPPED: AGENT_TRIAGE_ENABLED=${process.env.AGENT_TRIAGE_ENABLED || 'unset'}, ANTHROPIC_API_KEY ${hasKey ? 'set' : 'unset'}, AGENT_TRIAGE_LOCAL=${local ? '1' : 'unset'}.`)
+    console.log('   Runs when ENABLED=1 AND (LOCAL=1 subscription CLI OR a paid API key) is present.')
     process.exit(0)
   }
+  console.log(local ? 'agent-triage: LOCAL mode — subscription CLI, no API cost.' : 'agent-triage: cloud/API mode (paid).')
 
   const dryRun = process.env.AGENT_TRIAGE_DRY_RUN === '1'
   const escalations = loadEscalations()
@@ -161,8 +166,8 @@ function main() {
   }
   console.log(`agent-triage: ${escalations.length} unresolved failure(s) → invoking Claude (${MODEL})${dryRun ? ' [DRY RUN — no writes]' : ''}...`)
 
-  // Clean any stale verdict from a prior run.
-  try { if (existsSync(VERDICT_PATH)) execSync(`rm -f ${VERDICT_PATH}`) } catch { /* noop */ }
+  // Clean any stale verdict from a prior run (fs, not shell — cross-platform).
+  try { if (existsSync(VERDICT_PATH)) rmSync(VERDICT_PATH) } catch { /* noop */ }
 
   const userPrompt = buildUserPrompt(escalations)
 
@@ -180,19 +185,22 @@ function main() {
   const policy = dryRun ? SYSTEM_POLICY + DRY_NOTE : SYSTEM_POLICY
 
   try {
-    // Headless Claude Code. --append-system-prompt injects the Tier-B policy; allowedTools
-    // whitelists exactly what triage needs (destructive gh is NOT included). Bounded turns + timeout.
+    // Headless Claude Code via execFileSync (args ARRAY, no shell) — passing the multi-line
+    // system prompt through a shell string mangles it on Windows (cmd/PowerShell parse the policy
+    // text as commands). execFileSync avoids all quoting on both Linux (cloud) and Windows (local).
+    const CLAUDE_BIN = process.platform === 'win32' ? 'claude.exe' : 'claude'
     const args = [
-      '-p', JSON.stringify(userPrompt),
-      '--append-system-prompt', JSON.stringify(policy),
-      '--allowedTools', JSON.stringify(allowedTools),
+      '-p', userPrompt,
+      '--append-system-prompt', policy,
+      '--allowedTools', allowedTools,
       '--max-turns', String(MAX_TURNS),
       '--model', MODEL,
       '--output-format', 'json',
     ]
-    execSync(`claude ${args.join(' ')}`, {
-      stdio: 'inherit',
+    execFileSync(CLAUDE_BIN, args, {
+      stdio: ['ignore', 'inherit', 'inherit'], // ignore stdin: prompt comes via -p, avoids a 3s "no stdin" wait
       timeout: AGENT_TIMEOUT_MS,
+      maxBuffer: 64 * 1024 * 1024,
       env: { ...process.env, GIT_AUTHOR_NAME: 'Agent Triage', GIT_AUTHOR_EMAIL: 'noreply@predivo.ch', GIT_COMMITTER_NAME: 'Agent Triage', GIT_COMMITTER_EMAIL: 'noreply@predivo.ch' },
     })
   } catch (e) {
