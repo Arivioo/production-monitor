@@ -11,20 +11,28 @@ This file is the **operations** reference.
 ## 1. The pipeline
 
 ```
-                       hourly (:37)                      on a monitor failure
+  LIVE-SITE surface        hourly (:37)                      on a monitor failure
   ┌───────────────┐   ┌──────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────────────────┐  ┌───────────────┐
   │  monitor.yml  │──▶│  Playwright  │─▶│  auto-fix   │─▶│  auto-heal  │─▶│  agent-triage         │─▶│  send-alert   │
   │  (detection)  │   │  + canaries  │  │  (patterns) │  │  (redeploy) │  │  (Claude, Tier B)     │  │  (email +     │
   └───────────────┘   └──────────────┘  └─────────────┘  └─────────────┘  └───────────────────────┘  │   diagnosis)  │
                                                                                      ▲                 └───────────────┘
-  deploy pipelines ──▶ flaky-retry.yml (every 30 min): auto-rerun a flaky deploy    │
                                                                                      │
-  agent-triage runs LOCAL-FIRST:  local-triage-runner.mjs (Windows task, every 20m, │
-     on Roger's subscription = $0 API)  ───────────────────────────────────────────┘
-     cloud/API path in monitor.yml is the DORMANT FALLBACK (for when the desktop is off)
+  DEPLOY-PIPELINE surface (each repo's deploy.yml)                                   │
+  ┌───────────────┐   flaky/infra ─▶ flaky-retry.yml (every 30 min): auto-rerun ONCE │
+  │  deploy fails │──▶│                                                              │
+  └───────────────┘   code fail ──▶ deploy-failure-triage.mjs (every 30 min):  ──────┘
+                         Claude Tier B → opens a FIX PR on the target repo (never auto-ship)
+
+  BOTH AI tiers run LOCAL-FIRST on Roger's subscription = $0 API:
+    · agent-triage        ← local-triage-runner.mjs   (Windows task AgentTriage-LocalRunner, 20m)
+    · deploy-failure-triage ← deploy-failure-triage.mjs (Windows task DeployTriage-LocalRunner, 30m)
+  cloud/API paths are the DORMANT FALLBACK (for when the desktop is off)
 ```
 
-**Detection is cloud (cheap). The expensive AI triage runs on the local subscription by default.**
+**Two surfaces: the live SITE (monitor.yml → agent-triage) and the deploy PIPELINE (deploy.yml →
+flaky-retry for infra, deploy-failure-triage for code). Detection is cloud (cheap); the expensive AI
+triage runs on the local subscription by default.**
 
 ---
 
@@ -78,18 +86,51 @@ API **fallback**.
 **Hard rule:** never rewrite a spec to make a failing test green if the product is actually broken
 (never mask a regression). Destructive `gh` (merge/cancel/delete/dispatch) is not in the allow‑list.
 
+### Phase 2b — deploy‑failure‑triage (AI tier for the DEPLOY PIPELINE)
+`agent-triage` reacts to **live‑site** monitor failures. Its sibling reacts to **deploy‑pipeline**
+failures: when a repo's `deploy.yml` goes red on a **code** step (build / typecheck / lint / unit /
+`gate-e2e`) that `flaky-retry` deliberately won't retry, a headless Claude agent diagnoses the root
+cause and opens a **fix PR** on the target repo. It **never auto‑ships** — no push to the deploy
+branch, no merge, no prod dispatch.
+
+| File | Role |
+|---|---|
+| `scripts/deploy-failure-triage.mjs` | Orchestrator: polls the fleet's `deploy.yml`, finds the current code‑failure per repo, clones it pristine, invokes `claude` (Tier B), records verdicts. Also a `DEPLOY_TRIAGE_DETECT_ONLY=1` probe (poll + classify, no clone/agent/writes). |
+| `scripts/setup-deploy-triage-task.ps1` | Registers the `DeployTriage-LocalRunner` Windows task (every 30 min, subscription). |
+
+**Only acts when it can't collide with anything:** LATEST run per branch only, and only if its
+`head_sha` still equals branch HEAD (a newer commit or a newer green run → **skip**, so it never
+touches a superseded/already‑fixed commit or an actively‑pushed branch); `push`/`schedule` events
+only (never a `workflow_dispatch` prod promotion); **code** failures only (infra stays with
+flaky‑retry / auto‑heal); one PR per broken commit (dedup by `repo@head_sha` in
+`deploy-triage-state.json`, plus an open‑PR check).
+
+**Tier‑B policy (deploy):**
+| Class | Action |
+|---|---|
+| Regression / real code break | Smallest correct fix on an `agent/deploy-fix-*` branch → **PR** against the deploy branch (verified locally if quick) |
+| Test‑drift (product changed, test asserts old behaviour, proven by a commit) | Fix the **test** in a PR — never weaken/delete a test to force green |
+| Env / secret / CI‑config | Escalate with exactly which secret/config + the fix |
+| Cannot safely patch | Escalate with root cause + a suggested patch in prose (no low‑confidence PR) |
+**Gate:** runs when `DEPLOY_TRIAGE_ENABLED=1` AND (`DEPLOY_TRIAGE_LOCAL=1` subscription OR API key).
+**Kill‑switch:** machine env `DEPLOY_TRIAGE_DISABLED=1`. **Dry run:** `DEPLOY_TRIAGE_DRY_RUN=1`.
+**Same hard rules as agent‑triage** (no destructive `gh`, target‑repo changes are PRs only, never
+mask a real break).
+
 ---
 
 ## 3. Local‑first execution (the default, $0 API)
 
 - **Local CLI:** `C:\Users\roger_rwjnmnz\.local\bin\claude.exe`, authed via Roger's **subscription**
   (no `ANTHROPIC_API_KEY` in env) → runs on the flat plan, **no metered API cost**.
-- **Scheduled task:** `AgentTriage-LocalRunner`, every 20 min, Interactive logon (inherits the
-  subscription + `gh` auth). Runs `node scripts/local-triage-runner.mjs`.
-- **Isolated workdir:** `C:\Business\_agent-triage\production-monitor` — a dedicated pristine clone,
-  reset to `origin/master` each run (isolated from Roger's own working copy).
-- **State:** `C:\Business\_agent-triage\state.json` (dedup: last handled run id).
-- **Log:** `C:\Business\_agent-triage\runner.log`.
+- **Scheduled tasks (both Interactive logon, inherit subscription + `gh` auth):**
+  - `AgentTriage-LocalRunner`, every 20 min → `node scripts/local-triage-runner.mjs` (live‑site monitor).
+  - `DeployTriage-LocalRunner`, every 30 min → `scripts/deploy-failure-triage.mjs` (deploy pipelines).
+- **Isolated workdirs** under `C:\Business\_agent-triage\`:
+  - `production-monitor\` — pristine clone reset to `origin/master` each run (monitor triage).
+  - `deploy-fixes\<repo>\` — one pristine clone per target repo, reset to the failed HEAD (deploy triage).
+- **State:** `state.json` (monitor: last handled run id) · `deploy-triage-state.json` (deploy: dedup by `repo@head_sha`).
+- **Logs:** `runner.log` (monitor) · `deploy-triage.log` (deploy).
 
 **Requires the desktop on AND logged in.** Fully logged off → the task pauses; use the cloud
 fallback if Roger will be away.
