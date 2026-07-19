@@ -434,6 +434,58 @@ test.describe('SignalScore — Production Monitor', () => {
     })
   })
 
+  // ── Data-source API health (the check that would have caught the dead
+  //    GOOGLE_MAPS_API_KEY on day 1 instead of 5 weeks later) ──────────────
+  test.describe('Data-Source API Health', () => {
+    const ACCESS_TOKEN = process.env.SIGNALSCORE_SUPABASE_ACCESS_TOKEN
+
+    // Every credit-check data source logs its outbound calls to api_request_logs
+    // with the real HTTP status. A source whose key expired / quota-capped / API
+    // disabled returns only 4xx/5xx — and the app degrades silently to "no data".
+    // Alert when any service has failed with NO successful calls in the last 24h
+    // (a sustained outage), while ignoring transient blips that still have 2xx.
+    test('no external data source is failing with zero successes (24h)', async ({ request }) => {
+      test.skip(!ACCESS_TOKEN, 'SIGNALSCORE_SUPABASE_ACCESS_TOKEN not set')
+
+      const ref = projectRefFromUrl(SUPABASE_URL)
+      const sql = `select service,
+        count(*) filter (where status_code >= 400) as errors,
+        count(*) filter (where status_code between 200 and 299) as successes,
+        max(created_at) filter (where status_code >= 400) as last_error
+        from api_request_logs
+        where created_at > now() - interval '24 hours'
+        group by service
+        having count(*) filter (where status_code >= 400) >= 2
+           and count(*) filter (where status_code between 200 and 299) = 0`
+
+      const resp = await request.post(
+        `https://api.supabase.com/v1/projects/${ref}/database/query`,
+        {
+          headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          data: { query: sql },
+        },
+      )
+      expect(resp.ok(), `Management API query failed: ${resp.status()}`).toBe(true)
+
+      const rows = (await resp.json()) as Array<{
+        service: string
+        errors: number
+        successes: number
+        last_error: string
+      }>
+      const down = Array.isArray(rows) ? rows : []
+      expect(
+        down,
+        `Data sources DOWN (only errors, no successes in 24h): ${down
+          .map((r) => `${r.service} (${r.errors} errors, last ${r.last_error})`)
+          .join('; ')}`,
+      ).toEqual([])
+    })
+  })
+
   // ── Real Login Form Interaction (not magic link bypass) ─────────────
 
   test('login form: fields accept input and opacity > 0', async ({ page }) => {
