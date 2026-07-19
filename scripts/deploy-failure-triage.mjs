@@ -266,8 +266,15 @@ function runAgent(c, workdir, dryRun) {
   return verdicts
 }
 
-function main() {
+async function main() {
   if (process.env.DEPLOY_TRIAGE_DISABLED === '1') { log('DEPLOY_TRIAGE_DISABLED=1 — no-op'); return }
+
+  // Ops probe: verify the alert-email config end-to-end without a real failure.
+  if (process.env.DEPLOY_TRIAGE_TEST_EMAIL === '1') {
+    log('DEPLOY_TRIAGE_TEST_EMAIL=1 — sending a sample alert...')
+    await sendTriageEmail([{ project: 'SampleProject', step: 'gate-e2e', class: 'ESCALATION (test)', rootCause: 'This is a test of the deploy-triage alert email — no real failure.', action: 'none', escalate: true, runUrl: 'https://github.com/Arivioo/production-monitor/actions' }])
+    return
+  }
 
   const enabled = process.env.DEPLOY_TRIAGE_ENABLED === '1'
   const local = process.env.DEPLOY_TRIAGE_LOCAL === '1'
@@ -296,6 +303,7 @@ function main() {
 
   log(`deploy-failure-triage: ${candidates.length} code-failure(s) to diagnose → ${candidates.map((c) => `${c.name}#${c.runId}`).join(', ')}`)
 
+  const diagnoses = []   // one per verdict, across all candidates — folded into the alert email
   for (const c of candidates) {
     log(`▶ ${c.name} #${c.runId}: "${c.step}" (commit ${c.headSha.slice(0, 7)}) — diagnosing...`)
     const workdir = prepareClone(c)
@@ -313,11 +321,78 @@ function main() {
       }
       saveState(state)
     }
-    verdicts.forEach((v) => log(`  [${v.class}] ${c.name} → ${v.action}${v.prUrl ? ' (' + v.prUrl + ')' : ''}${v.escalate ? ' — NEEDS ROGER' : ''}`))
-    if (verdicts.length === 0) log(`  ${c.name}: agent produced no verdict (see output above)`)
+    verdicts.forEach((v) => {
+      log(`  [${v.class}] ${c.name} → ${v.action}${v.prUrl ? ' (' + v.prUrl + ')' : ''}${v.escalate ? ' — NEEDS ROGER' : ''}`)
+      diagnoses.push({ project: c.name, step: c.step, runUrl: `https://github.com/${c.repo}/actions/runs/${c.runId}`, ...v })
+    })
+    if (verdicts.length === 0) {
+      log(`  ${c.name}: agent produced no verdict (see output above)`)
+      diagnoses.push({ project: c.name, step: c.step, runUrl: `https://github.com/${c.repo}/actions/runs/${c.runId}`, class: 'UNKNOWN', rootCause: 'The triage agent produced no verdict — see runner output.', action: 'none', escalate: true })
+    }
   }
 
+  // Ping Roger for anything that needs him (an opened fix PR to review, or an escalation the agent
+  // couldn't fix). Silent no-op if SMTP isn't configured in the environment.
+  if (!dryRun) await sendTriageEmail(diagnoses.filter((d) => d.escalate || d.prUrl))
+
   log('deploy-failure-triage: done.')
+}
+
+// ── Alert email (folds the AI diagnosis into a ping) ────────────────────────────────────────
+async function sendTriageEmail(items) {
+  if (!items || items.length === 0) return
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ALERT_EMAIL } = process.env
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !ALERT_EMAIL) {
+    log(`  (email skipped — SMTP/ALERT_EMAIL not configured; ${items.length} item(s) in deploy-triage.log)`)
+    return
+  }
+  let createTransport
+  try { ({ createTransport } = await import('nodemailer')) }
+  catch { log('  (email skipped — nodemailer not available)'); return }
+
+  const esc = (s) => String(s ?? '').replace(/[<>&]/g, (m) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[m]))
+  const rows = items.map((d) => `
+    <tr>
+      <td style="padding:8px;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">${esc(d.project)}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb">${esc(d.class)}${d.step ? ' · ' + esc(d.step) : ''}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb">${esc(d.rootCause || d.diagnosis || '')}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;white-space:nowrap">${d.prUrl ? `<a href="${esc(d.prUrl)}" style="color:#2563eb">PR ansehen</a>` : (d.escalate ? '<span style="color:#dc2626">Braucht dich</span>' : '—')} · <a href="${esc(d.runUrl)}" style="color:#2563eb">Run</a></td>
+    </tr>`).join('')
+  const prCount = items.filter((d) => d.prUrl).length
+  const html = `
+    <div style="font-family:system-ui,sans-serif;max-width:760px;margin:0 auto">
+      <div style="background:#dc2626;color:white;padding:16px 24px;border-radius:8px 8px 0 0">
+        <h2 style="margin:0;font-size:18px">Deploy-Pipeline Triage — ${items.length} Diagnose(n)</h2>
+        <p style="margin:4px 0 0;font-size:14px;opacity:0.9">${prCount} Fix-PR(s) zum Review · ${items.length - prCount} Eskalation(en)</p>
+      </div>
+      <div style="padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#fef2f2">
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Projekt</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Klasse</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Ursache</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Aktion</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p style="margin-top:16px;font-size:12px;color:#6b7280">Deploy-Status live: backoffice.predivo.ch/deploy-status · gesendet ${new Date().toISOString()}</p>
+      </div>
+    </div>`
+  try {
+    const transporter = createTransport({
+      host: SMTP_HOST, port: parseInt(SMTP_PORT || '465', 10), secure: true, family: 4,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    })
+    await transporter.sendMail({
+      from: `Deploy Triage <${SMTP_USER}>`,
+      to: ALERT_EMAIL,
+      subject: `[DEPLOY] ${items.length} Diagnose(n) — ${prCount} Fix-PR, ${items.length - prCount} Eskalation`,
+      html,
+    })
+    log(`  📧 alert emailed to ${ALERT_EMAIL} (${items.length} item(s))`)
+  } catch (e) {
+    log(`  email send failed: ${e.message.split('\n')[0]} (items still in deploy-triage.log)`)
+  }
 }
 
 main()

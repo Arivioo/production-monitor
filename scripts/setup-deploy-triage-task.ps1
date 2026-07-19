@@ -15,6 +15,14 @@
     Unregister-ScheduledTask -TaskName "DeployTriage-LocalRunner" -Confirm:$false
 
   Kill-switch (no un-registering needed): set a machine env var DEPLOY_TRIAGE_DISABLED=1.
+
+  ALERTS: on an opened fix-PR or an escalation the agent can't fix, the runner emails ALERT_EMAIL.
+  It reads SMTP_HOST/PORT/USER/PASS + ALERT_EMAIL from the USER environment (so the task inherits
+  them and the password stays out of git). Set once (already done 2026-07-19):
+    [Environment]::SetEnvironmentVariable('SMTP_HOST','tertia.sui-inter.net','User')  # + PORT 465,
+    USER noreply@backoffice.predivo.ch, PASS <BackOffice mailbox pw>, ALERT_EMAIL roger@mueller.ro
+  Test the email path any time:  $env:DEPLOY_TRIAGE_TEST_EMAIL='1'; node scripts\deploy-failure-triage.mjs
+  (If SMTP/ALERT_EMAIL are unset the runner still works — it just logs instead of emailing.)
 #>
 $ErrorActionPreference = 'Stop'
 

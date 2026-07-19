@@ -114,6 +114,9 @@ flaky‑retry / auto‑heal); one PR per broken commit (dedup by `repo@head_sha`
 | Cannot safely patch | Escalate with root cause + a suggested patch in prose (no low‑confidence PR) |
 **Gate:** runs when `DEPLOY_TRIAGE_ENABLED=1` AND (`DEPLOY_TRIAGE_LOCAL=1` subscription OR API key).
 **Kill‑switch:** machine env `DEPLOY_TRIAGE_DISABLED=1`. **Dry run:** `DEPLOY_TRIAGE_DRY_RUN=1`.
+**Alerts (2026‑07‑19):** on a fix‑PR or an escalation it **emails `ALERT_EMAIL`** (reads
+`SMTP_*`+`ALERT_EMAIL` from the USER env — set on the desktop, out of git). Falls back to the log if
+unset. Probe: `DEPLOY_TRIAGE_TEST_EMAIL=1 node scripts/deploy-failure-triage.mjs`.
 **Same hard rules as agent‑triage** (no destructive `gh`, target‑repo changes are PRs only, never
 mask a real break).
 
