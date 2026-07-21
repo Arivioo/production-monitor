@@ -70,7 +70,10 @@ await probe('anthropic: key + model families', async () => {
   if (!res.ok) { fail(`anthropic — /v1/models returned ${res.status} (dead key?)`); return }
   const ids = ((await res.json()).data ?? []).map((m) => m.id)
   ok(`anthropic key valid, ${ids.length} models listed`)
-  for (const family of ['claude-sonnet', 'claude-haiku']) {
+  // claude-opus is included because agent-triage.mjs and deploy-failure-triage.mjs
+  // hard-pin claude-opus-4-8 and have NO _shared/anthropic-model.ts fallback — an
+  // opus retirement would break them silently (audit 2026-07-21).
+  for (const family of ['claude-sonnet', 'claude-haiku', 'claude-opus']) {
     if (ids.some((id) => id.startsWith(family))) ok(`model family ${family}* alive`)
     else fail(`anthropic — no live model in family ${family}* (fleet AI fns pin this family)`)
   }
