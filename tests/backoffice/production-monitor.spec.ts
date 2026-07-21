@@ -894,7 +894,7 @@ test.describe('BackOffice — Production Monitor', () => {
   // broken updater, not idleness. Tune STALE_HOURS if the cadence changes.
   test.describe('API dashboard — scraped balance freshness', () => {
     const STALE_HOURS = 26
-    const SCRAPED_BALANCES = ['Anthropic Claude', 'Google Gemini']
+    const SCRAPED_BALANCES = ['Anthropic Claude', 'Google Gemini', 'Kimi (Moonshot)']
 
     test(`scraped balances refreshed within ${STALE_HOURS}h`, async () => {
       const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
