@@ -1,6 +1,34 @@
 import { createClient } from '@supabase/supabase-js'
 import { Page } from '@playwright/test'
 
+/**
+ * Supabase's GoTrue intermittently rejects a perfectly valid admin key with
+ *   "invalid JWT: ... unrecognized JWT kid <nil> for algorithm ES256"
+ * while a project's signing keys are being migrated to ES256 (observed
+ * 2026-07-22 on ReplyFlow + BackOffice: same key returns 200 on 30/30 direct
+ * calls yet fails on a minority of CI calls). It is a server-side propagation
+ * race, not a dead key — so retry it briefly instead of alarming.
+ *
+ * A genuinely dead/disabled key produces the same class of message but fails
+ * EVERY attempt, so the final throw still catches real key expiry.
+ */
+const TRANSIENT_KEY_ERROR = /unrecognized JWT kid|bad_jwt|unable to parse or verify signature/i
+
+async function withKeyRetry<T extends { error: { message: string } | null }>(
+  label: string,
+  key: string,
+  call: () => Promise<T>,
+): Promise<T> {
+  const kind = key.startsWith('sb_secret_') || key.startsWith('sb_publishable_') ? 'new-format' : 'legacy-jwt'
+  let result = await call()
+  for (let attempt = 1; attempt <= 3 && result.error && TRANSIENT_KEY_ERROR.test(result.error.message); attempt++) {
+    console.log(`[auth] ${label}: transient key error (attempt ${attempt}/3, key=${kind}) — ${result.error.message}`)
+    await new Promise((r) => setTimeout(r, attempt * 2000))
+    result = await call()
+  }
+  return result
+}
+
 interface LoginConfig {
   supabaseUrl: string
   serviceRoleKey: string
@@ -24,13 +52,15 @@ export async function loginViaMagicLink(page: Page, config: LoginConfig): Promis
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const { data, error } = await supabase.auth.admin.generateLink({
-    type: 'magiclink',
-    email: config.testEmail,
-    options: {
-      redirectTo: config.siteUrl,
-    },
-  })
+  const { data, error } = await withKeyRetry('generateLink', config.serviceRoleKey, () =>
+    supabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: config.testEmail,
+      options: {
+        redirectTo: config.siteUrl,
+      },
+    }),
+  )
 
   if (error) throw new Error(`generateLink failed: ${error.message}`)
   if (!data?.properties?.action_link) throw new Error('No action_link in response')
@@ -55,10 +85,12 @@ export async function ensureTestUser(
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  const { error } = await supabase.auth.admin.createUser({
-    email,
-    email_confirm: true,
-  })
+  const { error } = await withKeyRetry('createUser', serviceRoleKey, () =>
+    supabase.auth.admin.createUser({
+      email,
+      email_confirm: true,
+    }),
+  )
 
   if (error && !error.message.includes('already been registered') && !error.message.includes('already exists')) {
     throw new Error(`Failed to create test user: ${error.message}`)
@@ -97,7 +129,9 @@ export async function setUserPlan(
   // Resolve user_id by email (admin API has no getUserByEmail).
   let userId: string | undefined
   for (let page = 1; page <= 10 && !userId; page++) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 })
+    const { data, error } = await withKeyRetry('listUsers', serviceRoleKey, () =>
+      supabase.auth.admin.listUsers({ page, perPage: 1000 }),
+    )
     if (error) throw new Error(`setUserPlan listUsers failed: ${error.message}`)
     userId = data.users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase())?.id
     if (data.users.length < 1000) break
