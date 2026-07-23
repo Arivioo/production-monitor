@@ -1,0 +1,53 @@
+name: Fleet Cron Heartbeat
+
+# Nightly dead-man's-switch for every product's pg_cron jobs: each product's own
+# watchdog auto-fixes its domain, but a watchdog that stops RUNNING is silent from
+# the inside. This asks each prod Supabase project whether every active cron job
+# succeeded within ~3× its own interval (persistent-only — never a single missed
+# tick). A red run IS the alert; send-heartbeat-alert.mjs mails the findings, so a
+# standing breakage pages at most once per day. Approved 2026-07-23.
+
+on:
+  schedule:
+    - cron: '7 5 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cron-heartbeat
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # send-heartbeat-alert.mjs needs nodemailer; the checker itself is dep-free.
+      - run: npm ci
+
+      - name: Check fleet pg_cron heartbeats
+        run: node scripts/check-cron-heartbeats.mjs
+        env:
+          SUPABASE_TOKEN_REPLYFLOW: ${{ secrets.SUPABASE_TOKEN_REPLYFLOW }}
+          SUPABASE_TOKEN_BACKOFFICE: ${{ secrets.SUPABASE_TOKEN_BACKOFFICE }}
+          SUPABASE_TOKEN_MUELLER: ${{ secrets.SUPABASE_TOKEN_MUELLER }}
+          SUPABASE_TOKEN_CHANNELMOVER: ${{ secrets.SUPABASE_TOKEN_CHANNELMOVER }}
+          SUPABASE_TOKEN_ARIVIOO: ${{ secrets.SUPABASE_TOKEN_ARIVIOO }}
+          SUPABASE_TOKEN_VALRANO: ${{ secrets.SUPABASE_TOKEN_VALRANO }}
+
+      - name: Send heartbeat alert on failure
+        if: failure()
+        run: node scripts/send-heartbeat-alert.mjs
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: '465'
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          ALERT_EMAIL: rogmueller1976@gmail.com
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

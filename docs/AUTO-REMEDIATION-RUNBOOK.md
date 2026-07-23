@@ -228,3 +228,23 @@ gh workflow run agent-triage-test.yml --repo Arivioo/production-monitor   # need
   `runner.log` + new `[agent-triage]` commits/PRs on production‑monitor. Kill‑switch ready.
 - **Task needs an active logon** (§3). Desktop on but logged off → local triage pauses.
 - **6 static repos** still carry an old FTP‑retry `set +e` bug (separate deploy‑pipeline backlog).
+
+## 6. Fleet cron heartbeat (third surface — watching the watchers, added 2026-07-23)
+
+The two surfaces above (live SITE, deploy PIPELINE) never see a product's **in-database
+background jobs**. Those are guarded product-locally (e.g. ReplyFlow `monitor-sync-health`,
+which probes + auto-fixes stale connections before ever emailing) — but a watchdog that
+STOPS RUNNING is indistinguishable from health from the inside. `cron-heartbeat.yml`
+(nightly 05:07 UTC) closes that hole from the outside:
+
+| File | What it does | Guardrails |
+|---|---|---|
+| `scripts/check-cron-heartbeats.mjs` | Asks each cron-bearing prod Supabase project (ReplyFlow, BackOffice, SignalScore, ChannelMover, Arivioo, Valrano) whether every **active** pg_cron job succeeded within ~3× its own schedule interval. Read-only Management-API queries, per-product PATs (`SUPABASE_TOKEN_*`), 4× retry on the gateway's transient 502s. | Persistent-only by construction (3× interval, floors); nightly ⇒ ≤1 email/day; a project it cannot reach is reported "unverifiable" rather than skipped (a silent watchdog is worse than none) |
+| `scripts/send-heartbeat-alert.mjs` | On a red run, mails `heartbeat-findings.json` to the watched Gmail. | The red run IS the alert — no state, no dedup needed at nightly cadence |
+
+Division of labor (alerting philosophy 2026-07-23): **healing stays product-local** —
+this layer never remediates, it only answers "is anyone watching the watchers?".
+Known limitation: `net.http_post` crons count as succeeded once dispatched, even if the
+edge function errors — function-level failures remain the product watchdogs' job.
+Projects without pg_cron (ShipSolo, DistributionOS, BoatBuddy, Beize Jass, ScoutCopilot
+as of 2026-07-23) are deliberately absent; add them to `PRODUCTS` when they gain crons.
