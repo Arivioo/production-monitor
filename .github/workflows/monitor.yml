@@ -81,11 +81,11 @@ jobs:
           REPLYFLOW_SERVICE_ROLE_KEY: ${{ secrets.REPLYFLOW_SERVICE_ROLE_KEY }}
           REPLYFLOW_ANON_KEY: ${{ secrets.REPLYFLOW_ANON_KEY }}
           REPLYFLOW_SUPABASE_ACCESS_TOKEN: ${{ secrets.REPLYFLOW_SUPABASE_ACCESS_TOKEN }}
-          # ShipSolo
-          SHIPSOLO_URL: https://distributionos.predivo.ch
-          SHIPSOLO_SUPABASE_URL: ${{ secrets.SHIPSOLO_SUPABASE_URL }}
-          SHIPSOLO_SERVICE_ROLE_KEY: ${{ secrets.SHIPSOLO_SERVICE_ROLE_KEY }}
-          SHIPSOLO_ANON_KEY: ${{ secrets.SHIPSOLO_ANON_KEY }}
+          # Distribution-OS (env prefix renamed from stale dead-name SHIPSOLO_* 2026-07-23)
+          DISTRIBUTIONOS_URL: https://distributionos.predivo.ch
+          DISTRIBUTIONOS_SUPABASE_URL: ${{ secrets.DISTRIBUTIONOS_SUPABASE_URL }}
+          DISTRIBUTIONOS_SERVICE_ROLE_KEY: ${{ secrets.DISTRIBUTIONOS_SERVICE_ROLE_KEY }}
+          DISTRIBUTIONOS_ANON_KEY: ${{ secrets.DISTRIBUTIONOS_ANON_KEY }}
           # Arivioo
           ARIVIOO_URL: https://arivioo.com
           ARIVIOO_SUPABASE_URL: ${{ secrets.ARIVIOO_SUPABASE_URL }}
@@ -165,8 +165,8 @@ jobs:
           LAUNCHREADY_SERVICE_ROLE_KEY: ${{ secrets.LAUNCHREADY_SERVICE_ROLE_KEY }}
           SCOUTCOPILOT_SUPABASE_URL: ${{ secrets.SCOUTCOPILOT_SUPABASE_URL }}
           SCOUTCOPILOT_SERVICE_ROLE_KEY: ${{ secrets.SCOUTCOPILOT_SERVICE_ROLE_KEY }}
-          SHIPSOLO_SUPABASE_URL: ${{ secrets.SHIPSOLO_SUPABASE_URL }}
-          SHIPSOLO_SERVICE_ROLE_KEY: ${{ secrets.SHIPSOLO_SERVICE_ROLE_KEY }}
+          DISTRIBUTIONOS_SUPABASE_URL: ${{ secrets.DISTRIBUTIONOS_SUPABASE_URL }}
+          DISTRIBUTIONOS_SERVICE_ROLE_KEY: ${{ secrets.DISTRIBUTIONOS_SERVICE_ROLE_KEY }}
           BOATBUDDY_SUPABASE_URL: ${{ secrets.BOATBUDDY_SUPABASE_URL }}
           BOATBUDDY_SERVICE_ROLE_KEY: ${{ secrets.BOATBUDDY_SERVICE_ROLE_KEY }}
           # PAID-KEY GATE: unset until Roger approves — canaries self-skip loudly.

@@ -5,3 +5,4 @@ blob-report/
 .env
 .env.local
 auto-fix-results.json
+heartbeat-findings.json

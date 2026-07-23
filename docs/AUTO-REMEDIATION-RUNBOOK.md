@@ -246,5 +246,5 @@ Division of labor (alerting philosophy 2026-07-23): **healing stays product-loca
 this layer never remediates, it only answers "is anyone watching the watchers?".
 Known limitation: `net.http_post` crons count as succeeded once dispatched, even if the
 edge function errors — function-level failures remain the product watchdogs' job.
-Projects without pg_cron (ShipSolo, DistributionOS, BoatBuddy, Beize Jass, ScoutCopilot
+Projects without pg_cron (LaunchReady, Distribution-OS, BoatBuddy, Beize Jass, ScoutCopilot
 as of 2026-07-23) are deliberately absent; add them to `PRODUCTS` when they gain crons.

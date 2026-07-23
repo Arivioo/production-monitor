@@ -40,7 +40,7 @@ const ACCOUNTS = {
     // APIs project SUNSET 2026-07-02 (API Dashboard decommissioned) — account api@predivo.ch still hosts Beize Jass Tour
     { ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour', warn: 'PRE-LAUNCH MVP - uses GoTrue built-in mailer via supabase.auth.signUp() (jass-tour-ui-kit Auth.tsx:92). Configure custom SMTP/hook + rate_limit_email_sent>=10 BEFORE public launch.' },
   ],
-  LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'ShipSolo' }],
+  LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'LaunchReady' }],
   DISTRIBUTIONOS: [
     { ref: 'jxjpbmkgmuunpayqgbsx', name: 'DistributionOS' },
     { ref: 'mkdeftmubrkseyrrbzvp', name: 'Valrano' },

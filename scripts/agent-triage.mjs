@@ -41,7 +41,7 @@ const PROJECTS = {
   ReplyFlow:    { dir: 'replyflow',    repo: 'Arivioo/replyflow',        branch: 'main' },
   ChannelMover: { dir: 'ytmigration',  repo: 'Arivioo/ChannelMover',     branch: 'main' },
   ScoutCopilot: { dir: 'scoutcopilot', repo: 'Arivioo/ScoutCopilot',     branch: 'master' },
-  ShipSolo:     { dir: 'shipsolo',     repo: 'Arivioo/distribution-os',  branch: 'master' },
+  'Distribution-OS': { dir: 'distribution-os', repo: 'Arivioo/distribution-os', branch: 'master' },
   Arivioo:      { dir: 'arivioo',      repo: 'Arivioo/Cursor_Arivioo',   branch: 'main' },
   LaunchReady:  { dir: 'launchready',  repo: 'Arivioo/launchready',      branch: 'master' },
   SignalScore:  { dir: 'signalscore',  repo: 'Arivioo/signalscore',      branch: 'main' },

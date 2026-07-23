@@ -24,7 +24,7 @@ function getProjects(): SupabaseProject[] {
     'ChannelMover':            { urlEnv: 'YTMIGRATION_SUPABASE_URL',           keyEnv: 'YTMIGRATION_ANON_KEY' },
     'ReplyFlow':               { urlEnv: 'REPLYFLOW_SUPABASE_URL',             keyEnv: 'REPLYFLOW_ANON_KEY' },
     'ReplyFlow Staging':       { urlEnv: 'REPLYFLOW_STAGING_SUPABASE_URL',     keyEnv: 'REPLYFLOW_STAGING_ANON_KEY' },
-    'ShipSolo':                { urlEnv: 'SHIPSOLO_SUPABASE_URL',              keyEnv: 'SHIPSOLO_ANON_KEY' },
+    'Distribution-OS':         { urlEnv: 'DISTRIBUTIONOS_SUPABASE_URL',        keyEnv: 'DISTRIBUTIONOS_ANON_KEY' },
     'Arivioo':                 { urlEnv: 'ARIVIOO_SUPABASE_URL',               keyEnv: 'ARIVIOO_ANON_KEY' },
     'SignalScore':             { urlEnv: 'SIGNALSCORE_SUPABASE_URL',           keyEnv: 'SIGNALSCORE_ANON_KEY' },
     'SignalScore Staging':     { urlEnv: 'SIGNALSCORE_STAGING_SUPABASE_URL',   keyEnv: 'SIGNALSCORE_STAGING_ANON_KEY' },

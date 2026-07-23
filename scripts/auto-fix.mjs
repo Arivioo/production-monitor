@@ -331,7 +331,7 @@ function resolveProjectDir(projectName) {
     ReplyFlow: 'replyflow',
     ChannelMover: 'ytmigration',
     ScoutCopilot: 'scoutcopilot',
-    ShipSolo: 'shipsolo',
+    'Distribution-OS': 'distribution-os',
     Arivioo: 'arivioo',
     LaunchReady: 'launchready',
     SignalScore: 'signalscore',

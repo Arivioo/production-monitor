@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { loginViaMagicLink, ensureTestUser } from '../../lib/auth'
 
-const SITE_URL = process.env.SHIPSOLO_URL || 'https://distributionos.predivo.ch'
-const SUPABASE_URL = process.env.SHIPSOLO_SUPABASE_URL!
-const SERVICE_ROLE_KEY = process.env.SHIPSOLO_SERVICE_ROLE_KEY!
-const ANON_KEY = process.env.SHIPSOLO_ANON_KEY!
+const SITE_URL = process.env.DISTRIBUTIONOS_URL || 'https://distributionos.predivo.ch'
+const SUPABASE_URL = process.env.DISTRIBUTIONOS_SUPABASE_URL!
+const SERVICE_ROLE_KEY = process.env.DISTRIBUTIONOS_SERVICE_ROLE_KEY!
+const ANON_KEY = process.env.DISTRIBUTIONOS_ANON_KEY!
 const TEST_EMAIL = process.env.TEST_EMAIL || 'healthcheck-test@predivo.ch'
 
 const AUTH_CONFIG = {
@@ -24,7 +24,7 @@ async function bypassPasswordGate(page: import('@playwright/test').Page, url: st
 
 /**
  * Navigate to target URL with PasswordGate bypassed.
- * After loginViaMagicLink, the page should be on the ShipSolo origin.
+ * After loginViaMagicLink, the page should be on the Distribution-OS origin.
  * If not (e.g., stuck on about:blank), navigate to origin first.
  */
 async function gotoWithGateBypass(page: import('@playwright/test').Page, url: string): Promise<void> {
@@ -37,7 +37,7 @@ async function gotoWithGateBypass(page: import('@playwright/test').Page, url: st
   await page.goto(url, { waitUntil: 'networkidle' })
 }
 
-test.describe('ShipSolo — Production Monitor', () => {
+test.describe('Distribution-OS — Production Monitor', () => {
   test.beforeAll(async () => {
     await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
   })
@@ -143,7 +143,7 @@ test.describe('ShipSolo — Production Monitor', () => {
     //   - Command Center (user has products + onboarding complete)
     //     h1 text: "Week {N} Command Center"
     //   - FirstMission (no products, first time)
-    //     h1 text: "Welcome to ShipSolo"
+    //     h1 text: "Welcome to Distribution-OS"
     //   - SetupSprint (has products, setup not done)
     //     stepbar with labels like "Knowledge Base", "AI Config"
     const body = page.locator('body')
@@ -152,7 +152,7 @@ test.describe('ShipSolo — Production Monitor', () => {
     // Command Center: h1 contains "Command Center" (full text is "Week N Command Center")
     const hasCommandCenter = await page.locator('h1').filter({ hasText: /Command Center/i }).isVisible().catch(() => false)
 
-    // FirstMission welcome screen: h1 = "Welcome to ShipSolo"
+    // FirstMission welcome screen: h1 = "Welcome to Distribution-OS"
     const hasWelcome = await page.locator('h1').filter({ hasText: /Welcome to/i }).isVisible().catch(() => false)
 
     // SetupSprint: shows step labels in the sidebar stepper
@@ -251,14 +251,14 @@ test.describe('ShipSolo — Production Monitor', () => {
     expect((generalText || '').length).toBeGreaterThan(20)
   })
 
-  test('site identity — title contains shipsolo or distribution', async ({ page }) => {
+  test('site identity — title contains distribution branding', async ({ page }) => {
     await bypassPasswordGate(page, SITE_URL)
     const title = await page.title()
     const body = await page.textContent('body')
     const combined = `${title} ${body}`.toLowerCase()
     expect(
-      combined.includes('shipsolo') || combined.includes('distribution'),
-      'distributionos.predivo.ch must contain "shipsolo" or "distribution" branding',
+      combined.includes('distribution'),
+      'distributionos.predivo.ch must contain "distribution" branding (ShipSolo is a DEAD name — decision 2026-05-29)',
     ).toBe(true)
   })
 

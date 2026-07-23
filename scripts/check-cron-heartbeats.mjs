@@ -21,7 +21,7 @@
  *
  * Uses the Supabase Management API query endpoint with per-product PATs
  * (same contract as check-drift.mjs). Read-only. Projects without pg_cron
- * (ShipSolo, DistributionOS, BoatBuddy, Beize Jass, ScoutCopilot as of
+ * (LaunchReady, Distribution-OS, BoatBuddy, Beize Jass, ScoutCopilot as of
  * 2026-07-23) are deliberately absent.
  */
 
