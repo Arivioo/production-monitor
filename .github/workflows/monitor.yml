@@ -81,7 +81,7 @@ jobs:
           REPLYFLOW_SERVICE_ROLE_KEY: ${{ secrets.REPLYFLOW_SERVICE_ROLE_KEY }}
           REPLYFLOW_ANON_KEY: ${{ secrets.REPLYFLOW_ANON_KEY }}
           REPLYFLOW_SUPABASE_ACCESS_TOKEN: ${{ secrets.REPLYFLOW_SUPABASE_ACCESS_TOKEN }}
-          # Distribution-OS (env prefix renamed from stale dead-name SHIPSOLO_* 2026-07-23)
+          # Distribution-OS
           DISTRIBUTIONOS_URL: https://distributionos.predivo.ch
           DISTRIBUTIONOS_SUPABASE_URL: ${{ secrets.DISTRIBUTIONOS_SUPABASE_URL }}
           DISTRIBUTIONOS_SERVICE_ROLE_KEY: ${{ secrets.DISTRIBUTIONOS_SERVICE_ROLE_KEY }}
