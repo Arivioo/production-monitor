@@ -216,6 +216,7 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           ALERT_EMAIL: rogmueller1976@gmail.com
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}   # edge-triggered dedup: query the previous run + download its results.json to suppress duplicate alerts for an already-known ongoing failure
 
       - name: Send resolution email if previous run failed
         if: success()

@@ -23,6 +23,16 @@ import { test, expect } from '@playwright/test';
  * API error, no-run-yet (first nightly hasn't fired), an in-progress run, or a 'cancelled'
  * run all SKIP — a transient API blip must never raise a false alarm.
  *
+ * PERSISTENCE GATE (Roger's alerting philosophy, 2026-07-23: "alert only on persistent breakage,
+ * transient = noise"). A staging gauntlet can go red for a few minutes on a self-healing blip —
+ * e.g. Supabase momentarily rotating its ES256 signing key so an admin auth call 403s — which
+ * flaky-retry.mjs then reruns green. We must NOT page on that window. So a failure alerts ONLY
+ * once it has PERSISTED past the auto-retry self-heal window: either the run was already retried
+ * (run_attempt >= 2 and still red = a rerun didn't fix it), OR it is old enough (> 2h) that
+ * flaky-retry's window has elapsed without recovery. A fresh first-attempt failure SKIPS — the
+ * auto-fix layer gets its chance first. This is the exact false page from 2026-07-24 (SignalScore
+ * attempt-1 JWT teardown blip, reran green minutes later — should never have emailed).
+ *
  * Requires DASHBOARD_PAT (GitHub PAT with actions:read). Already provided to the monitor job.
  */
 
@@ -53,9 +63,25 @@ for (const repo of TIERED_REPOS) {
     const latest = runs[0];
     test.skip(latest.status !== 'completed', `${repo}: latest scheduled gauntlet still ${latest.status}`);
 
+    // Only a definitive failure is a candidate; a green/cancelled latest run is healthy.
+    const isFail = ['failure', 'timed_out'].includes(latest.conclusion);
+    test.skip(!isFail, `${repo}: latest scheduled gauntlet is '${latest.conclusion}' — healthy`);
+
+    // PERSISTENCE GATE — page only once the failure has outlived the auto-retry self-heal window
+    // (see header). run_attempt >= 2 → flaky-retry already reran it and it's STILL red = persistent.
+    // Otherwise require the failure to be > 2h old so flaky-retry's window has passed.
+    const startedAt = latest.run_started_at ?? latest.created_at;
+    const ageHours = (Date.now() - new Date(startedAt).getTime()) / 3_600_000;
+    const attempt = latest.run_attempt ?? 1;
+    const persistent = attempt >= 2 || ageHours >= 2;
+    test.skip(
+      !persistent,
+      `${repo}: scheduled gauntlet failed on attempt ${attempt}, ${ageHours.toFixed(1)}h ago — inside the auto-retry self-heal window, not yet persistent (no page).`,
+    );
+
     expect(
-      ['failure', 'timed_out'],
-      `${repo} NIGHTLY GAUNTLET FAILED — a real-login / integration / E2E gate regressed against staging (${latest.html_url}). Do NOT promote ${repo} to production until fixed.`,
-    ).not.toContain(latest.conclusion);
+      isFail && persistent,
+      `${repo} NIGHTLY GAUNTLET PERSISTENTLY FAILING — a real-login / integration / E2E gate regressed against staging and the auto-retry did NOT recover it (attempt ${attempt}, ${ageHours.toFixed(1)}h, ${latest.html_url}). Do NOT promote ${repo} to production until fixed.`,
+    ).toBe(false);
   });
 }

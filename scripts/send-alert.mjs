@@ -1,5 +1,6 @@
 import { createTransport } from 'nodemailer'
 import { readFileSync, existsSync } from 'fs'
+import { execSync } from 'child_process'
 
 const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ALERT_EMAIL, GITHUB_RUN_URL } = process.env
 
@@ -114,6 +115,49 @@ if (hasAutoFixes) {
         file: e.file || '',
       }))
     : failures
+}
+
+// ── Edge-triggered dedup (Roger's alerting philosophy: don't re-page hourly for a KNOWN ongoing
+// issue — page once when it breaks, once when it resolves). Suppress this alert ONLY if every
+// current failure was ALSO failing in the immediately-previous monitor run (a continuing, already-
+// alerted issue). A NEW/changed failure signature always pages. FAIL-OPEN: any uncertainty (no
+// prior run, artifact missing, parse error, GH error) → send the alert. We never go silent on doubt.
+function previousFailureSignatures() {
+  try {
+    const currentRunId = String(process.env.GITHUB_RUN_ID || '')
+    if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) return null   // no gh auth → fail open
+    const runs = JSON.parse(execSync(
+      'gh run list --workflow=monitor.yml --limit=10 --json databaseId,status,conclusion',
+      { encoding: 'utf-8', timeout: 30_000 },
+    ))
+    const prev = runs.find((r) =>
+      String(r.databaseId) !== currentRunId &&
+      r.status === 'completed' &&
+      (r.conclusion === 'success' || r.conclusion === 'failure'))
+    if (!prev) return null                          // no comparable prior run → fail open
+    if (prev.conclusion === 'success') return new Set()   // last run GREEN → every current failure is new → send
+    // Last run failed → pull its results.json artifact and extract its failure signatures.
+    execSync(`gh run download ${prev.databaseId} -n test-results -D _prev_results`, { encoding: 'utf-8', timeout: 60_000 })
+    const prevResults = JSON.parse(readFileSync('_prev_results/test-results/results.json', 'utf-8'))
+    const prevFailures = []
+    for (const suite of prevResults.suites ?? []) prevFailures.push(...extractFailures(suite, null))
+    if (prevFailures.length === 0) return null      // couldn't read prior failures → fail open
+    return new Set(prevFailures.map((f) => `${f.project}||${f.test}`))
+  } catch {
+    return null                                     // ANY error → fail open (send)
+  }
+}
+
+const currentSignatures = failures.map((f) => `${f.project}||${f.test}`)
+const prevSignatures = previousFailureSignatures()
+const allAlreadyAlerted =
+  prevSignatures instanceof Set &&
+  prevSignatures.size > 0 &&
+  currentSignatures.length > 0 &&
+  currentSignatures.every((s) => prevSignatures.has(s))
+if (allAlreadyAlerted && !allFixed) {
+  console.log(`Suppressing duplicate alert — all ${currentSignatures.length} failure(s) were already alerted in the previous run (still failing, no new/changed issue). Resolution email will fire when they recover.`)
+  process.exit(0)
 }
 
 // Group failures by project for summary

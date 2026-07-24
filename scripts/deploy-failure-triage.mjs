@@ -53,10 +53,14 @@ const PROJECTS = [
 ]
 
 // Real code failures — the class that needs a fix, not a retry. Mirrors flaky-retry CODE, plus the
-// broad e2e "gate" jobs which are code when they fail on the current HEAD (a retry already had its
-// chance via flaky-retry; a still-red gate-e2e on HEAD is a real failing test).
-const CODE = /\blint\b|unit test|coverage|typecheck|tsc|feature coverage|build|run build|gate-e2e|e2e test|vitest|jest|playwright test/i
-// Pure-infra step names we still leave to flaky-retry / auto-heal even if they linger.
+// broad e2e/integration "gate" jobs which are code when they fail on the current HEAD (a retry
+// already had its chance via flaky-retry; a still-red gate on HEAD is a real failing test). The
+// integration gates (gate-integration / gate-critical / "integration tests") were previously
+// swallowed by INFRA_ONLY's "edge function" pattern and skipped forever with nobody diagnosing them
+// — the 2026-07-24 SignalScore gap. They belong here so a PERSISTENT one gets an agent diagnosis.
+const CODE = /\blint\b|unit test|coverage|typecheck|tsc|feature coverage|build|run build|gate-e2e|gate-integration|gate-critical|e2e test|integration test|vitest|jest|playwright test/i
+// Pure-infra step names we still leave to flaky-retry / auto-heal even if they linger. (CODE is
+// checked FIRST, so a test gate that also mentions "edge function" is correctly treated as code.)
 const INFRA_ONLY = /ftp|deploy .*staging|deploy .*production|verify .*alive|supabase cli|edge function|install deps|npm ci|setup-node|checkout|cache|prerender|smoke|rate limit/i
 
 const BASE = process.env.DEPLOY_TRIAGE_HOME || 'C:\\Business\\_agent-triage'
@@ -117,7 +121,7 @@ function findCandidates(state) {
     try {
       runs = JSON.parse(gh(
         `run list --repo ${p.repo} --workflow=deploy.yml --branch ${p.branch} --limit ${RUNS_PER_REPO} ` +
-        `--json databaseId,status,conclusion,createdAt,headSha,event,displayTitle`,
+        `--json databaseId,status,conclusion,createdAt,headSha,event,attempt,displayTitle`,
       ))
     } catch (e) { log(`[skip] ${p.name}: run list failed (${e.message.split('\n')[0]})`); continue }
     if (!runs || runs.length === 0) continue
@@ -127,6 +131,15 @@ function findCandidates(state) {
     if (latest.conclusion !== 'failure') continue            // green (or cancelled) → nothing to fix
     if (Date.now() - new Date(latest.createdAt).getTime() > LOOKBACK_MS) continue
     if (latest.event === 'workflow_dispatch') continue       // prod promotion — never touch
+
+    // Persistence gate (Roger's alerting philosophy: auto-fix first, only own PERSISTENT breakage).
+    // Don't diagnose a fresh first-attempt failure — flaky-retry may still rerun it green (a
+    // transient JWT/staging blip). Own it only once it's persistent: already retried (attempt >= 2,
+    // still red) OR older than the ~2h auto-retry window. Prevents a "this was just transient" no-op
+    // escalation email — the 2026-07-24 SignalScore class.
+    const ageMs = Date.now() - new Date(latest.createdAt).getTime()
+    const persistent = (latest.attempt ?? 1) >= 2 || ageMs >= 2 * 60 * 60 * 1000
+    if (!persistent) { log(`[skip] ${p.name}#${latest.databaseId}: first-attempt failure ${Math.round(ageMs / 60000)}m old — inside auto-retry window, not yet persistent`); continue }
 
     const head = branchHead(p.repo, p.branch)
     if (head && latest.headSha !== head) {                   // superseded by a newer commit → skip (don't collide)
