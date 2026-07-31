@@ -65,13 +65,45 @@ if (existsSync(resultsPath)) {
     for (const suite of results.suites ?? []) {
       failures.push(...extractFailures(suite, null))
     }
+    // No per-test failures extracted but the run still failed → surface whatever detail
+    // Playwright DID record instead of a content-free "Unknown" alert. This happens on a
+    // global setup/teardown failure, a worker crash, or a config error — the real info lives
+    // in the report's top-level `errors` and `stats`, not in any spec.
+    if (failures.length === 0) {
+      const topErrors = (results.errors ?? [])
+        .map((e) => stripAnsi(e?.message || String(e)).split('\n')[0].slice(0, 300))
+        .filter(Boolean)
+      if (topErrors.length) {
+        failures = topErrors.map((msg) => ({
+          project: 'Run-level error',
+          test: 'global setup/teardown / worker',
+          error: msg,
+          file: '',
+        }))
+      } else {
+        const s = results.stats || {}
+        const statsLine = Object.keys(s).length
+          ? `${s.expected ?? '?'} passed, ${s.unexpected ?? '?'} failed, ${s.flaky ?? '?'} flaky, ${s.skipped ?? '?'} skipped`
+          : 'report had no suites and no top-level errors'
+        failures = [{
+          project: 'Run failed — no per-test detail',
+          test: 'see run logs',
+          error: `The run failed but produced no parseable per-test failures (${statsLine}). Likely a crash/timeout in setup or a worker died. Open the run logs.`,
+          file: '',
+        }]
+      }
+    }
   } catch (e) {
     failures = [{ project: 'Parser', test: 'results.json', error: `Failed to parse: ${e.message}` }]
   }
-}
-
-if (failures.length === 0) {
-  failures = [{ project: 'Unknown', test: 'Unknown', error: 'Tests failed but no details available' }]
+} else {
+  // No report at all → the run died before Playwright wrote results (infra / timeout / crash).
+  failures = [{
+    project: 'Run failed — no report produced',
+    test: 'results.json missing',
+    error: 'test-results/results.json was not generated — the run likely crashed or timed out before Playwright wrote a report. Open the run logs.',
+    file: '',
+  }]
 }
 
 // Load auto-fix results if available
