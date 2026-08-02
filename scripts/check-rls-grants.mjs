@@ -66,7 +66,14 @@ const BOATBUDDY = 'anon-open by design — no tenants, client-side password gate
 // `allow` = per-project whitelist: { columns: ['table.column', …], functions: ['name', …] } with a reason.
 const ACCOUNTS = {
   MUELLER: [
-    { ref: 'ogdpgufptemcgyszmjek', name: 'SignalScore' },
+    { ref: 'ogdpgufptemcgyszmjek', name: 'SignalScore', allow: {
+      // All three are SECDEF invitation/membership helpers the SS app invokes as `authenticated`.
+      functions: [
+        'accept_invitation',          // gates on auth.uid() (returns "Not authenticated" if null); arg is a SECRET invite token (not a spoofable user id) and it only adds the CALLER to the org. App-invoked on invite accept.
+        'get_org_members_with_email', // read-only; returns nothing unless caller is a member of p_org_id (auth.uid() membership check). App-invoked member list.
+        'get_user_org_ids',           // SECDEF RLS-helper referenced by the members_read + invitation SELECT policies as get_user_org_ids(auth.uid()); `authenticated` MUST keep EXECUTE or those policies fail. anon+PUBLIC already revoked; returns only opaque org uuids, no mutation.
+      ],
+    } },
     { ref: 'blfnyxwcriyxvsaubiqb', name: 'SignalScore Staging', exempt: STAGING },
   ],
   REPLYFLOW: [
@@ -74,7 +81,11 @@ const ACCOUNTS = {
     { ref: 'cuvqzwvyovxvvvuddtjd', name: 'ReplyFlow Staging', exempt: STAGING },
   ],
   ARIVIOO: [{ ref: 'iooexkbuxmeryeuzpxau', name: 'Arivioo' }],
-  CHANNELMOVER: [{ ref: 'qswluvqunswggfmesdcs', name: 'ChannelMover' }],
+  CHANNELMOVER: [{ ref: 'qswluvqunswggfmesdcs', name: 'ChannelMover', allow: {
+    columns: [
+      'youtube_accounts.role', // NOT a permission role — a source/destination account-TYPE discriminator (values only 'source'|'destination'); set server-side by the connect-youtube-account edge fn (upsert onConflict user_id,role). No billing/entitlement meaning; generic 'role' name false-positive.
+    ],
+  } }],
   API: [{ ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour' }],
   LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'LaunchReady' }],
   DISTRIBUTIONOS: [
@@ -84,7 +95,22 @@ const ACCOUNTS = {
   ],
   SCOUTCOPILOT: [{ ref: 'rlcsuqwqzoqjykdiqjye', name: 'ScoutCopilot' }],
   BACKOFFICE: [
-    { ref: 'xoecpzfsskalvjrtcbbl', name: 'BackOffice' },
+    { ref: 'xoecpzfsskalvjrtcbbl', name: 'BackOffice', allow: {
+      // BackOffice is SINGLE-USER (Roger only, OTP login, RLS user_id-scoped own books): `authenticated`
+      // IS the sole owner editing his own ledger, so the multi-tenant self-grant/escalation class does not apply.
+      columns: [
+        'accounts.balance',                // own chart-of-accounts ledger; ALL policy auth.uid()=user_id (anon denied). Single owner's own books.
+        'bank_statement_balances.balance', // own imported bank-statement balances; UPDATE policy auth.uid()=user_id. Single owner's own books.
+        'contacts.stripe_customer_id',     // owner's own contacts (his customers/vendors); ALL policy auth.uid()=user_id. Not tenant billing.
+        'organization_members.role',       // UPDATE policy is org-OWNER-gated (organizations.owner_id=auth.uid()); non-owner cannot escalate, and single-user = only Roger.
+        'product_ideas.tier',              // product-idea SCORE band (Fable5 board), not a user entitlement; internal single-user data.
+      ],
+      functions: [
+        'perform_year_end_closing', // client-called as authenticated (useYearEndClosing supabase.rpc, p_user_id=user.id); single owner's own books. anon+PUBLIC revoked separately.
+        'reconcile_match',          // client-called as authenticated (useReconciliation supabase.rpc); anon+PUBLIC already revoked; verifies tx ownership internally. Single owner.
+        'support_accuracy',         // read-only analytics, client-called as authenticated (useSupport supabase.rpc); single-user dashboard. anon+PUBLIC revoked separately.
+      ],
+    } },
     { ref: 'vvgqkwiqauafcflshsec', name: 'BackOffice Staging', exempt: STAGING },
   ],
   BOATBUDDY: [
