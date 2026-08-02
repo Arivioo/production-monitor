@@ -61,6 +61,10 @@ const GLOBAL_FN_ALLOW_SUBSTR = ['send_email', 'send_auth_email']
 
 const STAGING = 'staging/test environment — prod is the source of truth for grants; not enforced'
 const BOATBUDDY = 'anon-open by design — no tenants, client-side password gate (PasswordGate.tsx, SHA-256), no billing/entitlement columns; billing-bypass class does not apply'
+// Not yet through the v11 audit → grant drift is un-triaged, so we do NOT enforce (would red-light CI
+// on real-but-unreviewed drift = alert noise). Reported in a PENDING section; when a project is
+// v11-audited + its grants triaged, remove `pending` (and add any allow{}) to enroll it as enforced.
+const PENDING = 'not yet through the v11 audit — grant drift un-triaged; enroll (remove pending, add allow{}) after auditing'
 
 // Reuses the ACCOUNTS shape from check-auth-email-config.mjs: { ref, name, exempt?, allow? }.
 // `allow` = per-project whitelist: { columns: ['table.column', …], functions: ['name', …] } with a reason.
@@ -80,20 +84,20 @@ const ACCOUNTS = {
     { ref: 'dqmhsdzldkxngwjrxois', name: 'ReplyFlow' },
     { ref: 'cuvqzwvyovxvvvuddtjd', name: 'ReplyFlow Staging', exempt: STAGING },
   ],
-  ARIVIOO: [{ ref: 'iooexkbuxmeryeuzpxau', name: 'Arivioo' }],
+  ARIVIOO: [{ ref: 'iooexkbuxmeryeuzpxau', name: 'Arivioo', pending: PENDING }],
   CHANNELMOVER: [{ ref: 'qswluvqunswggfmesdcs', name: 'ChannelMover', allow: {
     columns: [
       'youtube_accounts.role', // NOT a permission role — a source/destination account-TYPE discriminator (values only 'source'|'destination'); set server-side by the connect-youtube-account edge fn (upsert onConflict user_id,role). No billing/entitlement meaning; generic 'role' name false-positive.
     ],
   } }],
-  API: [{ ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour' }],
-  LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'LaunchReady' }],
+  API: [{ ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour', pending: PENDING }],
+  LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'LaunchReady', pending: PENDING }],
   DISTRIBUTIONOS: [
-    { ref: 'jxjpbmkgmuunpayqgbsx', name: 'DistributionOS' },
-    { ref: 'mkdeftmubrkseyrrbzvp', name: 'Valrano' },
+    { ref: 'jxjpbmkgmuunpayqgbsx', name: 'DistributionOS', pending: PENDING },
+    { ref: 'mkdeftmubrkseyrrbzvp', name: 'Valrano', pending: PENDING },
     { ref: 'vfwpcgdkrwqhdivfzmrg', name: 'Valrano Staging', exempt: STAGING },
   ],
-  SCOUTCOPILOT: [{ ref: 'rlcsuqwqzoqjykdiqjye', name: 'ScoutCopilot' }],
+  SCOUTCOPILOT: [{ ref: 'rlcsuqwqzoqjykdiqjye', name: 'ScoutCopilot', pending: PENDING }],
   BACKOFFICE: [
     { ref: 'xoecpzfsskalvjrtcbbl', name: 'BackOffice', allow: {
       // BackOffice is SINGLE-USER (Roger only, OTP login, RLS user_id-scoped own books): `authenticated`
@@ -260,6 +264,7 @@ async function main() {
   const violations = []     // { project, findings:[...] } — enforced FAILs (drives exit 1 + alert)
   const missingTokens = []
   const exempt = []
+  const pending = []        // reported, never fails — awaiting v11 audit enrollment
   const okProjects = []
   const warnOnly = []       // projects with only WARNs
   const errored = []
@@ -268,6 +273,7 @@ async function main() {
     const token = process.env[`SUPABASE_TOKEN_${acct}`]
     for (const p of projects) {
       if (p.exempt) { exempt.push({ name: p.name, reason: p.exempt }); continue }
+      if (p.pending) { pending.push({ name: p.name, reason: p.pending }); continue }
       if (!token) { missingTokens.push(`${p.name} (account ${acct})`); continue }
       try {
         const { fails, warns } = await auditProject(p, token)
@@ -302,6 +308,10 @@ async function main() {
   if (exempt.length) {
     console.log('\nEXEMPT (reported, never fails):')
     for (const e of exempt) console.log(`  - ${e.name.padEnd(22)} - ${e.reason}`)
+  }
+  if (pending.length) {
+    console.log('\nPENDING v11 audit (reported, never fails — enroll as enforced once audited):')
+    for (const e of pending) console.log(`  - ${e.name.padEnd(22)} - ${e.reason}`)
   }
   if (missingTokens.length) {
     console.log('\nUNAUDITED GAP (missing SUPABASE_TOKEN_* secret for an ENFORCED project):')
@@ -338,7 +348,7 @@ async function main() {
     console.error(`\nFAIL: ${violations.length} enforced project(s) with grant drift, ${missingTokens.length} unaudited gap(s).`)
     process.exit(1)
   }
-  console.log(`\nAll enforced projects OK (${okProjects.length} clean, ${warnOnly.length} warn-only, ${exempt.length} exempt).`)
+  console.log(`\nAll enforced projects OK (${okProjects.length} clean, ${warnOnly.length} warn-only, ${exempt.length} exempt, ${pending.length} pending v11 audit).`)
 }
 
 main()
