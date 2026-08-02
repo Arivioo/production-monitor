@@ -1,0 +1,26 @@
+name: v11 Gate Coverage Guard
+
+# Enforces that every REQUIRED app carries a GREEN v11 staging-gate harness. A red run here
+# means an enrolled project's gates broke; the PENDING list it prints is the living backfill
+# queue (any past app not yet enrolled, or a future app that skipped the project-starter
+# template, shows here until enrolled). Read-only, cross-repo via FLEET_READ_TOKEN.
+
+on:
+  schedule:
+    - cron: '40 6 * * 1' # Mondays 06:40 UTC (after the grant-drift + auth-email guards)
+  workflow_dispatch: {}
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Check v11 gate coverage across the fleet
+        run: node scripts/check-gate-coverage.mjs
+        env:
+          # classic PAT with repo:read across the Arivioo org (same secret the drift check uses)
+          GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN || secrets.DASHBOARD_PAT }}
