@@ -1,0 +1,41 @@
+name: RLS Grant Drift Guard
+
+# Continuously catches the billing-bypass class found in SignalScore + ChannelMover:
+# anon/authenticated holding UPDATE on an entitlement column (tier/credits/subscription_*/
+# quota/is_admin/role/stripe_*), or an anon/auth-executable SECURITY DEFINER RPC that mutates
+# billing (bypasses RLS). Read-only catalog SELECTs via the Supabase Management API. A red run
+# here IS the alert; an email is also sent if ALERT_SMTP_* secrets are set.
+
+on:
+  schedule:
+    - cron: '20 6 * * 1' # Mondays 06:20 UTC (just after the auth-email guard)
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Audit every enforced project's RLS grants (billing-bypass class)
+        run: node scripts/check-rls-grants.mjs
+        env:
+          SUPABASE_TOKEN_MUELLER: ${{ secrets.SUPABASE_TOKEN_MUELLER }}
+          SUPABASE_TOKEN_REPLYFLOW: ${{ secrets.SUPABASE_TOKEN_REPLYFLOW }}
+          SUPABASE_TOKEN_ARIVIOO: ${{ secrets.SUPABASE_TOKEN_ARIVIOO }}
+          SUPABASE_TOKEN_CHANNELMOVER: ${{ secrets.SUPABASE_TOKEN_CHANNELMOVER }}
+          SUPABASE_TOKEN_API: ${{ secrets.SUPABASE_TOKEN_API }}
+          SUPABASE_TOKEN_LAUNCHREADY: ${{ secrets.SUPABASE_TOKEN_LAUNCHREADY }}
+          SUPABASE_TOKEN_DISTRIBUTIONOS: ${{ secrets.SUPABASE_TOKEN_DISTRIBUTIONOS }}
+          SUPABASE_TOKEN_SCOUTCOPILOT: ${{ secrets.SUPABASE_TOKEN_SCOUTCOPILOT }}
+          SUPABASE_TOKEN_BACKOFFICE: ${{ secrets.SUPABASE_TOKEN_BACKOFFICE }}
+          SUPABASE_TOKEN_BOATBUDDY: ${{ secrets.SUPABASE_TOKEN_BOATBUDDY }}
+          ALERT_SMTP_HOST: ${{ secrets.ALERT_SMTP_HOST }}
+          ALERT_SMTP_PORT: ${{ secrets.ALERT_SMTP_PORT }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASS: ${{ secrets.ALERT_SMTP_PASS }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
