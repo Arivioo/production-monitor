@@ -41,8 +41,15 @@ const ACCOUNTS = {
     { ref: 'dkxdlovwzsxnepoteebk', name: 'Beize Jass Tour', warn: 'PRE-LAUNCH MVP - uses GoTrue built-in mailer via supabase.auth.signUp() (jass-tour-ui-kit Auth.tsx:92). Configure custom SMTP/hook + rate_limit_email_sent>=10 BEFORE public launch.' },
   ],
   LAUNCHREADY: [{ ref: 'hcfeoescybfngjsphekq', name: 'LaunchReady' }],
+  // 2026-07-30: DistributionOS + Valrano split into two dedicated Supabase accounts
+  // (old shared distributionos account hit the free-tier 2-project cap). Project refs
+  // unchanged, but each now needs its OWN account PAT — the old distributionos PAT returns
+  // HTTP 403 for both prod refs. DistributionOS -> new distributionos account
+  // (SUPABASE_TOKEN_DISTRIBUTIONOS); Valrano + staging -> new valrano account (SUPABASE_TOKEN_VALRANO).
   DISTRIBUTIONOS: [
     { ref: 'jxjpbmkgmuunpayqgbsx', name: 'DistributionOS' },
+  ],
+  VALRANO: [
     { ref: 'mkdeftmubrkseyrrbzvp', name: 'Valrano' },
     { ref: 'vfwpcgdkrwqhdivfzmrg', name: 'Valrano Staging', exempt: STAGING },
   ],
