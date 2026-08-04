@@ -37,7 +37,7 @@ const FLEET = [
   { name: 'Valrano',          repo: 'Arivioo/Valrano',          dir: 'Valrano',          gates: 'required' },
   { name: 'ScoutCopilot',     repo: 'Arivioo/ScoutCopilot',     dir: 'ScoutCopilot',     gates: 'required' },
   { name: 'Distribution-OS',  repo: 'Arivioo/Distribution-OS',  dir: 'Distribution-OS',  gates: 'required' },
-  { name: 'launchready',      repo: 'Arivioo/launchready',      dir: 'launchready',      gates: 'required' },
+  { name: 'launchready',      repo: 'Arivioo/launchready',      dir: 'launchready',      gates: 'deferred' }, // Next.js, off the fleet-standard Vite stack; gate enrollment HELD pending Roger's stack decision (2026-08-04)
   { name: 'arivioo',          repo: 'Arivioo/Cursor_Arivioo',   dir: 'arivioo',          gates: 'required' },
   { name: 'jass-tour-ui-kit', repo: 'Arivioo/jass-tour-ui-kit', dir: 'jass-tour-ui-kit', gates: 'required' },
   { name: 'predivo',          repo: 'Arivioo/predivo',          dir: 'predivo',          gates: 'na' },
@@ -78,9 +78,11 @@ const violations = []   // enrolled but gates red -> exit 1 + alert
 const pending = []      // required, not yet enrolled -> backfill queue (never fails)
 const okList = []
 const naList = []
+const deferred = []     // gate-worthy but enrollment HELD (e.g. off-stack, pending a decision) -> never fails
 
 for (const p of FLEET) {
   if (p.gates === 'na') { naList.push(p.name); continue }
+  if (p.gates === 'deferred') { deferred.push(p.name); continue }
   if (!isEnrolled(p)) { pending.push(p.name); continue }
   const c = latestRunConclusion(p)
   if (c === 'success' || c === 'unknown') okList.push(`${p.name}${c === 'unknown' ? ' (enrolled; run status needs a token)' : ''}`)
@@ -94,6 +96,7 @@ if (pending.length) {
   console.log('\nPENDING enrollment (required apps without the v11 gates yet — the backfill queue):')
   for (const n of pending) console.log(`  - ${n}  (add e2e/staging/v11-gates.spec.ts + playwright.v11-gates.config.ts + ${WORKFLOW}; then it flips to enforced)`)
 }
+if (deferred.length) console.log(`\nDEFERRED (gate-worthy but enrollment held — revisit; not counted): ${deferred.join(', ')}`)
 if (naList.length) console.log(`\nN/A (static site / internal tool, nothing to browser-gate): ${naList.join(', ')}`)
 
 const required = FLEET.filter((p) => p.gates === 'required').length
