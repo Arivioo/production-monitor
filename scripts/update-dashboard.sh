@@ -63,9 +63,13 @@ for REPO in $REPOS; do
     continue
   fi
 
-  # Get current values from data.json
+  # Get current values from data.json (newly registered repos have no .commits yet -> jq
+  # emits the literal string "null", which breaks the arithmetic below under set -u)
   CURRENT_COMMITS=$(echo "$DATA" | jq -r --arg r "$REPO" \
     '(.products + .tools)[] | select(.repo == $r) | .commits')
+  if [ -z "$CURRENT_COMMITS" ] || [ "$CURRENT_COMMITS" = "null" ]; then
+    CURRENT_COMMITS=0
+  fi
 
   if [ "$COMMIT_COUNT" != "$CURRENT_COMMITS" ]; then
     NEW_COMMITS=$((COMMIT_COUNT - CURRENT_COMMITS))
