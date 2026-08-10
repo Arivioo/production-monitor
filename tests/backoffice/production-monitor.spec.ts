@@ -943,4 +943,35 @@ test.describe('BackOffice — Production Monitor', () => {
       ).toEqual([])
     })
   })
+
+  // ── SEO panel freshness — catches a DEAD pull-engine weekly run ─────────────
+  //
+  // The /seo-engine panel is refreshed every Monday 05:00 UTC by the pull-engine
+  // weekly workflow (GSC pull → seo-ingest push). On 2026-08-10 that push failed
+  // AND its failure alarm failed (stale SMTP secrets) — the panel silently froze
+  // and nothing signalled it. This makes it LOUD: stale seo_runs fail the monitor.
+  // Threshold 8 days: weekly cadence + 1 day of slack; >8d = a genuinely dead run.
+  test.describe('SEO panel — pull-engine run freshness', () => {
+    const STALE_DAYS = 8
+
+    test(`latest seo_runs row newer than ${STALE_DAYS}d`, async () => {
+      const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+      const { data: rows, error } = await admin
+        .from('seo_runs')
+        .select('site_id, run_at')
+        .order('run_at', { ascending: false })
+        .limit(1)
+      expect(error, `seo_runs query failed: ${error?.message}`).toBeNull()
+      expect(rows?.length, 'seo_runs is EMPTY — pull-engine has never pushed').toBeTruthy()
+
+      const ageDays = (Date.now() - new Date(rows![0].run_at).getTime()) / 86_400_000
+      expect(
+        ageDays,
+        `SEO panel is STALE — newest seo_runs row (${rows![0].site_id}) is ${ageDays.toFixed(1)}d old.\n` +
+          `The pull-engine Monday run (Arivioo/pull-engine weekly-pull.yml, Mon 05:00 UTC) is not\n` +
+          `pushing. Check: gh run list -R Arivioo/pull-engine --workflow=weekly-pull.yml\n` +
+          `and the healthchecks.io "pull-engine-weekly" check.`,
+      ).toBeLessThan(STALE_DAYS)
+    })
+  })
 })
