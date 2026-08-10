@@ -408,4 +408,9 @@ async function sendTriageEmail(items) {
   }
 }
 
-main()
+// Heartbeat (2026-08-10 reliability plan): success ping / fail signal to healthchecks.io.
+const HC = 'https://hc-ping.com/530b0783-27f4-4fe7-8ea5-736a790bba8c'
+Promise.resolve().then(main).then(
+  () => fetch(HC).catch(() => {}),
+  (e) => fetch(`${HC}/fail`).catch(() => {}).then(() => { console.error(e); process.exitCode = 1 }),
+)

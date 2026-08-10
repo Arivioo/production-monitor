@@ -106,4 +106,9 @@ function main() {
   log(`done with run #${run.databaseId}`)
 }
 
-main()
+// Heartbeat (2026-08-10 reliability plan): success ping / fail signal to healthchecks.io.
+const HC = 'https://hc-ping.com/22c411dc-3636-4032-80da-ca7deae506d0'
+Promise.resolve().then(main).then(
+  () => fetch(HC).catch(() => {}),
+  (e) => fetch(`${HC}/fail`).catch(() => {}).then(() => { console.error(e); process.exitCode = 1 }),
+)
