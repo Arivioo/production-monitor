@@ -65,6 +65,16 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
 
+      # Factory Cockpit: upsert the `kb` machine_state row (factory_state tile) from the
+      # last commit touching the KB data file. Best-effort: the script always exits 0.
+      - name: Factory heartbeat (cockpit machine_state - kb)
+        if: always() && steps.collect.outcome == 'success'
+        run: node scripts/factory-heartbeat.mjs kb
+        env:
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
+          FLEET_READ_TOKEN: ${{ secrets.FLEET_READ_TOKEN }}
+
       # Always runs after collection; the script emails only when escalations exist
       # (red >48h) and exits 0 otherwise, so this never fails the job.
       - name: Escalate workflows red for >48h

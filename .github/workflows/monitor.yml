@@ -240,6 +240,15 @@ jobs:
         if: success()
         run: curl -fsS -m 10 --retry 3 https://hc-ping.com/ed11efd1-42e5-48d9-9b26-97dd6c284721 || true
 
+      # Factory Cockpit: upsert the `monitoring` machine_state row (factory_state tile).
+      # Best-effort: the script always exits 0; staleness/alert is the failure signal.
+      - name: Factory heartbeat (cockpit machine_state)
+        if: always()
+        run: node scripts/factory-heartbeat.mjs monitoring
+        env:
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
