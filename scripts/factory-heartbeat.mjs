@@ -8,7 +8,6 @@
  *   node scripts/factory-heartbeat.mjs kb           (daily, from dashboard-update.yml)
  *
  * Env (all already repo secrets): BACKOFFICE_SUPABASE_URL, BACKOFFICE_SERVICE_ROLE_KEY.
- * kb mode additionally: FLEET_READ_TOKEN (classic PAT, repo:read).
  *
  * Best-effort BY DESIGN: logs and exits 0 on any failure — a heartbeat writer must
  * never fail the monitor it rides on. Staleness is the failure signal (the cockpit
@@ -17,7 +16,6 @@
 
 const SUPABASE_URL = process.env.BACKOFFICE_SUPABASE_URL
 const SERVICE_KEY = process.env.BACKOFFICE_SERVICE_ROLE_KEY
-const FLEET_TOKEN = process.env.FLEET_READ_TOKEN
 
 const HOURS_STALE_MONITORING = 36 // automation-status.json regenerates daily
 const DAYS_STALE_KB = 3 // kb(daily) commits should land at least this often
@@ -65,16 +63,18 @@ async function monitoring() {
 }
 
 async function kb() {
-  if (!FLEET_TOKEN) throw new Error('FLEET_READ_TOKEN not set')
+  // KB liveness = the live `knowledge_videos` table (the KB-as-data source the loop maintains).
+  // Was the git commit date of src/data/knowledge/videos.ts, but the KB moved off that file to
+  // the DB table on 2026-08-11, so the old signal false-flipped "stale" while the loop was active.
   const res = await fetch(
-    'https://api.github.com/repos/Arivioo/backoffice/commits?path=src/data/knowledge/videos.ts&per_page=1',
-    { headers: { Authorization: `Bearer ${FLEET_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'production-monitor' } }
+    `${SUPABASE_URL}/rest/v1/knowledge_videos?select=id,created_at&order=created_at.desc&limit=1`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }
   )
-  if (!res.ok) throw new Error(`github commits HTTP ${res.status}`)
-  const commits = await res.json()
-  const last = commits[0]
-  if (!last) throw new Error('no commits found for videos.ts')
-  const lastAt = new Date(last.commit.committer.date)
+  if (!res.ok) throw new Error(`knowledge_videos HTTP ${res.status} ${await res.text()}`)
+  const rows = await res.json()
+  const last = rows[0]
+  if (!last) throw new Error('no knowledge_videos rows')
+  const lastAt = new Date(last.created_at)
   const ageDays = (Date.now() - lastAt.getTime()) / 8.64e7
   const stale = ageDays > DAYS_STALE_KB
   await upsert({
@@ -85,9 +85,8 @@ async function kb() {
     pending_action_count: 0,
     alert: stale,
     meta: {
-      source: 'github:Arivioo/backoffice src/data/knowledge/videos.ts',
-      last_commit_sha: last.sha.slice(0, 7),
-      last_commit_message: last.commit.message.split('\n')[0],
+      source: 'knowledge_videos (latest created_at)',
+      last_video_id: last.id,
       age_days: Math.round(ageDays * 10) / 10,
     },
   })
