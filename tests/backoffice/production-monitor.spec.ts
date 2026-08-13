@@ -225,12 +225,8 @@ test.describe('BackOffice — Production Monitor', () => {
     expect(page.url()).toContain('/projects')
   })
 
-  test('documents page loads', async ({ page }) => {
-    await loginViaMagicLink(page, AUTH_OPTS)
-    await page.goto(`${SITE_URL}/dokumente`)
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
-  })
+  // 'documents page loads' removed 2026-08-13 (Wave 6): /dokumente no longer a BackOffice route
+  // (moved to Factory Cockpit); the smoke test passed only via the NotFound catch-all's h1.
 
   test('banking page loads', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_OPTS)
@@ -248,12 +244,8 @@ test.describe('BackOffice — Production Monitor', () => {
     expect(page.url()).toContain('/stripe')
   })
 
-  test('health monitor page loads', async ({ page }) => {
-    await loginViaMagicLink(page, AUTH_OPTS)
-    await page.goto(`${SITE_URL}/health-monitor`)
-    await page.waitForLoadState('networkidle')
-    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
-  })
+  // 'health monitor page loads' removed 2026-08-13 (Wave 6): /health-monitor no longer a BackOffice
+  // route (moved to Factory Cockpit); the smoke test passed only via the NotFound catch-all's h1.
 
   test('debtors page loads', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_OPTS)
@@ -311,9 +303,11 @@ test.describe('BackOffice — Production Monitor', () => {
   test('sidebar navigation has key items', async ({ page }) => {
     await loginViaMagicLink(page, AUTH_OPTS)
     await page.waitForLoadState('networkidle')
-    // Check for key nav items that exist in the sidebar (using actual labels from src/lib/navigation.ts
-    // after the 2026-07-17 Console redesign: top-level items + expanded section children)
-    const navItems = ['Dashboard', 'Portfolio', 'Finanzen', 'Kontakte', 'Growth', 'Buchhaltung']
+    // Check for key nav items that exist in the sidebar (actual labels from src/lib/navigation.ts).
+    // After Wave 6 (2026-08-13) BackOffice was stripped to accounting-only: Portfolio/Growth removed,
+    // and only top-level items + section headers are always visible (children need the section expanded).
+    // So assert on always-rendered top-level items and section headers.
+    const navItems = ['Dashboard', 'Finanzen', 'Kunden & Support', 'Steuern & Abschluss', 'Vorsorge']
     for (const item of navItems) {
       await expect(
         page.locator(`text=${item}`).first(),
@@ -455,44 +449,8 @@ test.describe('BackOffice — Production Monitor', () => {
     await expect(page.locator(`text=${testContactLastName}`).first()).not.toBeVisible({ timeout: 10_000 })
   })
 
-  // ── Documents interaction ──────────────────────────────────────
-
-  test('Documents: list loads and category filter works', async ({ page }) => {
-    test.setTimeout(60_000)
-
-    await loginViaMagicLink(page, AUTH_OPTS)
-    await page.goto(`${SITE_URL}/dokumente`)
-    await page.waitForLoadState('networkidle')
-
-    // h1 is present
-    await expect(page.locator('h1').first()).toBeVisible({ timeout: 10_000 })
-
-    // Wait for the document list to settle (loading spinner disappears or table/empty state appears)
-    await page.waitForTimeout(2000)
-
-    // Either a table with documents or an empty state must be visible — not an error
-    const hasTable = await page.locator('table, [aria-label*="okument"]').first().isVisible()
-    const hasEmptyState = await page.locator('text=/Keine Dokumente|noch keine/i').first().isVisible().catch(() => false)
-    const hasUploadArea = await page.locator('text=/Hochladen|Upload|Drag/i').first().isVisible().catch(() => false)
-    expect(
-      hasTable || hasEmptyState || hasUploadArea,
-      'Documents page should show a document list, empty state, or upload area',
-    ).toBe(true)
-
-    // Verify the category filter bar is rendered (Status-Filter group or category buttons)
-    const filterGroup = page.locator('[role="group"][aria-label*="Filter"], button:has-text("Alle")').first()
-    await expect(filterGroup).toBeVisible({ timeout: 10_000 })
-
-    // Click a category filter (e.g. "Versicherung" or just the second filter button)
-    const filterButtons = page.locator('[role="group"] button, button:has-text("Alle") ~ button')
-    const filterCount = await filterButtons.count()
-    if (filterCount > 1) {
-      await filterButtons.nth(1).click()
-      await page.waitForTimeout(500)
-      // Page should not crash — h1 still visible
-      await expect(page.locator('h1').first()).toBeVisible({ timeout: 5_000 })
-    }
-  })
+  // Documents (/dokumente) test removed 2026-08-13: Wave 6 stripped BackOffice to accounting-only;
+  // the Documents surface now lives in the Factory Cockpit, not BackOffice.
 
   // ── Invoicing interaction ──────────────────────────────────────
 
@@ -745,49 +703,8 @@ test.describe('BackOffice — Production Monitor', () => {
     await page.waitForTimeout(300)
   })
 
-  // ── Health Monitor data verification ──────────────────────────
-
-  test('Health Monitor: project cards load with status indicators', async ({ page }) => {
-    test.setTimeout(60_000)
-
-    await loginViaMagicLink(page, AUTH_OPTS)
-    await page.goto(`${SITE_URL}/health-monitor`)
-    await page.waitForLoadState('networkidle')
-
-    await expect(page.locator('h1:has-text("Health Monitor")').first()).toBeVisible({ timeout: 10_000 })
-
-    // Wait for data to load (the edge function call may take a few seconds)
-    // Either the summary cards with real numbers appear, or an error state
-    const summaryCard = page.locator('text=Projekte gesamt').first()
-    const errorState = page.locator('text=Fehler beim Laden').first()
-
-    const result = await Promise.race([
-      summaryCard.waitFor({ timeout: 30_000 }).then(() => 'data' as const),
-      errorState.waitFor({ timeout: 30_000 }).then(() => 'error' as const),
-    ]).catch(() => 'timeout' as const)
-
-    // We accept data OR a graceful error state — just not a blank/crashed page
-    expect(['data', 'error'], `Health Monitor should load data or show error state, got: ${result}`)
-      .toContain(result)
-
-    if (result === 'data') {
-      // Summary stat cards must all be present
-      await expect(page.locator('text=Gesund').first()).toBeVisible({ timeout: 10_000 })
-      await expect(page.locator('text=Eingeschrankt').first()).toBeVisible({ timeout: 10_000 })
-      await expect(page.locator('text=Ausgefallen').first()).toBeVisible({ timeout: 10_000 })
-
-      // SMTP status card must appear
-      await expect(page.locator('text=SMTP-Verbindung').first()).toBeVisible({ timeout: 10_000 })
-
-      // At least one project card must be visible in the grid
-      const projectCards = page.locator('.grid .rounded-lg').filter({ hasText: /backoffice|channelmover|valrano|signalscore|replyflow|scoutcopilot|launchready/i })
-      const cardCount = await projectCards.count()
-      expect(cardCount, 'At least one project card should be visible').toBeGreaterThan(0)
-    }
-
-    // Refresh button must always be present
-    await expect(page.locator('button[aria-label="Aktualisieren"]').first()).toBeVisible({ timeout: 10_000 })
-  })
+  // Health Monitor (/health-monitor) test removed 2026-08-13: Wave 6 stripped BackOffice to
+  // accounting-only; the Health Monitor surface now lives in the Factory Cockpit, not BackOffice.
 
   // ── Stripe data verification ───────────────────────────────────
 
