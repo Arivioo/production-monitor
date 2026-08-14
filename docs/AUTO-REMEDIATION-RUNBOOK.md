@@ -120,6 +120,32 @@ unset. Probe: `DEPLOY_TRIAGE_TEST_EMAIL=1 node scripts/deploy-failure-triage.mjs
 **Same hard rules as agent‑triage** (no destructive `gh`, target‑repo changes are PRs only, never
 mask a real break).
 
+### Phase 2c — prod‑promotion watchdog (alert‑only; closes the `workflow_dispatch` blind spot, 2026‑08‑14)
+Every remediation layer above deliberately **ignores `workflow_dispatch`** runs (flaky‑retry.mjs:105,
+deploy‑triage `findCandidates`, auto‑heal is site‑down‑only) because a bot must **never** auto‑retry
+or auto‑push a PRODUCTION promotion. Correct — but it left a hole: when a **manual** prod promotion
+fails, it renders red on the Deploy‑Status board with **no alert, no triage, no heal**, and just sits
+there until a human notices (BackOffice sat ~9h stale on 2026‑08‑14 — the promotion of a
+`.gitignore`‑only commit that could never pass the staging gate). This watchdog watches exactly that
+surface and **only that** — it **detects + emails, never dispatches prod.**
+
+Folded into `deploy-failure-triage.mjs` (rides the same `DeployTriage-LocalRunner` task, SMTP env,
+and healthchecks heartbeat — no new automation). Runs as **free detection BEFORE the paid‑key AI
+gate**, so it still fires even if the AI tier is disabled.
+
+- **What it does:** for each repo, take the LATEST `workflow_dispatch` `deploy.yml` run; if it
+  `failure`d within 7 days and hasn't been alerted (dedup by `repo@runId` in `deploy-triage-state.json`
+  under a `promo` key), classify it and email `ALERT_EMAIL`.
+- **Classes / remedy in the email:** `STAGING-GATE` (promoted commit has no green staging run — usual
+  cause: a paths‑ignore‑only commit like `.gitignore`/`docs/**`/`*.md`; the email says whether the
+  current HEAD is already promotable and gives the exact re‑dispatch command) · `DEPLOY-STEP`
+  (failed at an FTP/verify step — likely transient, re‑run) · `OTHER` (open the log).
+- **Never** dispatches, retries, or pushes anything — pure alert. Honors the master kill‑switch
+  `DEPLOY_TRIAGE_DISABLED=1`.
+- **Probes:** `PROMO_WATCH_DETECT_ONLY=1` (poll + classify + log, no email/state) ·
+  `PROMO_WATCH_TEST_EMAIL=1` (sample alert) · `PROMO_WATCH_FORCE_RUN="Arivioo/backoffice=<runId>"`
+  (classify a specific real failed promotion end‑to‑end and email it — used to prove the alarm).
+
 ---
 
 ## 3. Local‑first execution (the default, $0 API)

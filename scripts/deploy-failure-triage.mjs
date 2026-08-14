@@ -68,6 +68,10 @@ const WORKROOT = join(BASE, 'deploy-fixes')
 const STATE = join(BASE, 'deploy-triage-state.json')
 const LOG = join(BASE, 'deploy-triage.log')
 const LOOKBACK_MS = 6 * 60 * 60 * 1000   // only diagnose recent breakage
+// Prod-promotion watchdog: a FAILED manual promotion can sit red on the board for many hours before
+// anyone looks (this one sat ~9h on 2026-08-14). Look back a full week so a stale failure still
+// pages; dedup-by-runId (not time) keeps it to a single alert per failed promotion.
+const PROMO_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
 const RUNS_PER_REPO = 12
 const MODEL = 'claude-opus-4-8'
 const MAX_TURNS = 60
@@ -282,6 +286,29 @@ function runAgent(c, workdir, dryRun) {
 async function main() {
   if (process.env.DEPLOY_TRIAGE_DISABLED === '1') { log('DEPLOY_TRIAGE_DISABLED=1 — no-op'); return }
 
+  // ── Prod-promotion watchdog probes (alert-only surface) ──────────────────────────────────────
+  // Ops probe: send a sample prod-promotion alert (proves the email path).
+  if (process.env.PROMO_WATCH_TEST_EMAIL === '1') {
+    log('PROMO_WATCH_TEST_EMAIL=1 — sending a sample prod-promotion alert...')
+    await sendPromoEmail([{ project: 'SampleProject', repo: 'Arivioo/sample', runId: '0', step: 'Verify staging gate', klass: 'STAGING-GATE (test)', reason: 'This is a test of the prod-promotion watchdog alert — no real failure.', remedy: 'No action needed — test only.' }])
+    return
+  }
+  // Force-classify a specific real failed promotion run and email it (proof against real data).
+  // Format: PROMO_WATCH_FORCE_RUN="Arivioo/backoffice=31748761448". Bypasses dedup + lookback.
+  if (process.env.PROMO_WATCH_FORCE_RUN) {
+    const [repo, runId] = process.env.PROMO_WATCH_FORCE_RUN.split('=')
+    const p = PROJECTS.find((x) => x.repo.toLowerCase() === (repo || '').toLowerCase()) || { name: repo, repo, branch: 'main' }
+    let run = { databaseId: runId, headSha: '' }
+    try { run = { ...run, ...JSON.parse(gh(`run view ${runId} --repo ${repo} --json headSha,displayTitle`)) } } catch { /* best effort */ }
+    const { step, job } = failedJobStep(repo, runId)
+    const cls = classifyPromoFailure(p, run, step)
+    log(`PROMO_WATCH_FORCE_RUN: ${p.name}#${runId} → ${cls.klass} ("${step || job}")`)
+    await sendPromoEmail([{ project: p.name, repo, runId, step: step || job, headSha: run.headSha, ...cls }])
+    return
+  }
+  // Free detection (no agent) — runs on every tick regardless of the paid-key AI gate below.
+  try { await checkProdPromotions() } catch (e) { log(`prod-promotion watchdog error: ${e.message.split('\n')[0]}`) }
+
   // Ops probe: verify the alert-email config end-to-end without a real failure.
   if (process.env.DEPLOY_TRIAGE_TEST_EMAIL === '1') {
     log('DEPLOY_TRIAGE_TEST_EMAIL=1 — sending a sample alert...')
@@ -405,6 +432,151 @@ async function sendTriageEmail(items) {
     log(`  📧 alert emailed to ${ALERT_EMAIL} (${items.length} item(s))`)
   } catch (e) {
     log(`  email send failed: ${e.message.split('\n')[0]} (items still in deploy-triage.log)`)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// PROD-PROMOTION WATCHDOG (alert-only) — closes the blind spot this file's own exclusions create.
+//
+// Every auto-remediation layer deliberately ignores `workflow_dispatch` runs (flaky-retry.mjs:105,
+// findCandidates line ~133, auto-heal only does site-down) because a bot must NEVER auto-retry or
+// auto-push a PRODUCTION promotion. Correct — but it left a hole: when a MANUAL prod promotion
+// fails, it renders red on the Deploy-Status board with no alert, no triage, no heal, and just sits
+// there until a human notices (BackOffice, 2026-08-14, ~9h stale). This watchdog watches exactly
+// that surface: latest failed prod-dispatch per repo → classify → EMAIL. It NEVER dispatches prod;
+// detection + a ping with a one-line remedy only. Free (no agent) → runs before the paid-key gate.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+
+function runUrl(repo, runId) { return `https://github.com/${repo}/actions/runs/${runId}` }
+
+// Does the current branch HEAD have a green staging (push) run? Mirrors the deploy.yml prod gate —
+// if true, the failed promotion is trivially fixable by re-dispatching (it will promote HEAD).
+function headHasGreenStaging(repo, branch) {
+  try {
+    const head = branchHead(repo, branch)
+    if (!head) return { promotable: false, head: null }
+    const n = JSON.parse(gh(
+      `run list --repo ${repo} --workflow=deploy.yml --branch ${branch} --event push --limit 30 ` +
+      `--json headSha,conclusion`,
+    )).filter((r) => r.headSha === head && r.conclusion === 'success').length
+    return { promotable: n >= 1, head }
+  } catch { return { promotable: false, head: null } }
+}
+
+// Classify a failed prod promotion into an actionable reason + remedy. No per-repo paths-ignore
+// parsing (kept lean) — the staging-gate case names the usual cause and gives the exact fix.
+function classifyPromoFailure(p, run, step) {
+  const s = String(step || '')
+  if (/staging gate|verify staging/i.test(s)) {
+    const { promotable, head } = headHasGreenStaging(p.repo, p.branch)
+    return {
+      klass: 'STAGING-GATE',
+      reason: `The promoted commit ${String(run.headSha || '').slice(0, 7)} has no green staging run, so the production gate refused it. Usual cause: the commit changed only paths-ignore files (.gitignore / docs/** / *.md), which don't trigger the staging pipeline — so it can never be promoted.`,
+      remedy: promotable
+        ? `Current branch HEAD (${String(head || '').slice(0, 7)}) already has a green staging run — just re-run the promotion to ship HEAD:  gh workflow run deploy.yml --repo ${p.repo} -f confirm=deploy`
+        : `Push a real (non-paths-ignore) commit to ${p.branch}, wait for the staging pipeline to go green, then promote.`,
+    }
+  }
+  if (/ftp|upload|mirror|clean|verify production|site-id|deploy/i.test(s)) {
+    return {
+      klass: 'DEPLOY-STEP',
+      reason: `The production deploy failed at "${s}" — this can be a transient FTP/network blip or a real config issue.`,
+      remedy: `Open the run log; if it looks transient, re-run:  gh workflow run deploy.yml --repo ${p.repo} -f confirm=deploy`,
+    }
+  }
+  return {
+    klass: 'OTHER',
+    reason: `The production promotion failed at "${s || 'an unknown step'}".`,
+    remedy: `Open the run log to diagnose: ${runUrl(p.repo, run.databaseId)}`,
+  }
+}
+
+// Poll each repo's latest MANUAL prod promotion; alert once (dedup by repo@runId) on a recent failure.
+// PROMO_WATCH_DETECT_ONLY=1 → poll + classify + log what WOULD alert, no email, no state write.
+async function checkProdPromotions() {
+  const detectOnly = process.env.PROMO_WATCH_DETECT_ONLY === '1'
+  const state = loadState()
+  if (!state.promo) state.promo = {}
+  const findings = []
+  for (const p of PROJECTS) {
+    let runs
+    try {
+      runs = JSON.parse(gh(
+        `run list --repo ${p.repo} --workflow=deploy.yml --branch ${p.branch} --event workflow_dispatch ` +
+        `--limit 5 --json databaseId,status,conclusion,createdAt,headSha,displayTitle`,
+      ))
+    } catch (e) { log(`[promo skip] ${p.name}: run list failed (${e.message.split('\n')[0]})`); continue }
+    if (!runs || runs.length === 0) continue          // static push-to-prod repos have no dispatch runs
+    const latest = runs[0]
+    if (latest.status !== 'completed') continue        // in flight → let it finish
+    if (latest.conclusion !== 'failure') continue      // latest promotion is green/cancelled → nothing to flag
+    if (Date.now() - new Date(latest.createdAt).getTime() > PROMO_LOOKBACK_MS) continue
+    const key = `${p.repo}@${latest.databaseId}`
+    if (!detectOnly && state.promo[key]) continue      // already alerted for this failed promotion
+    const { job, step } = failedJobStep(p.repo, latest.databaseId)
+    const cls = classifyPromoFailure(p, latest, step)
+    findings.push({ project: p.name, repo: p.repo, runId: latest.databaseId, step: step || job, headSha: latest.headSha, title: latest.displayTitle, ...cls, key })
+    log(`[promo]${detectOnly ? ' [DETECT]' : ''} ${p.name}#${latest.databaseId}: FAILED prod promotion — ${cls.klass} ("${step || job}")`)
+  }
+  if (findings.length === 0) { log(`prod-promotion watchdog:${detectOnly ? ' [DETECT]' : ''} no un-alerted failed promotions.`); return }
+  if (detectOnly) { log(`prod-promotion watchdog: [DETECT] would alert on ${findings.length} — ${findings.map((f) => `${f.project}#${f.runId}`).join(', ')}`); return }
+  await sendPromoEmail(findings)
+  for (const f of findings) state.promo[f.key] = { at: new Date().toISOString(), runId: f.runId, klass: f.klass }
+  saveState(state)
+}
+
+async function sendPromoEmail(items) {
+  if (!items || items.length === 0) return
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ALERT_EMAIL } = process.env
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !ALERT_EMAIL) {
+    log(`  (promo email skipped — SMTP/ALERT_EMAIL not configured; ${items.length} item(s) in deploy-triage.log)`)
+    return
+  }
+  let createTransport
+  try { ({ createTransport } = await import('nodemailer')) }
+  catch { log('  (promo email skipped — nodemailer not available)'); return }
+
+  const esc = (s) => String(s ?? '').replace(/[<>&]/g, (m) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[m]))
+  const rows = items.map((d) => `
+    <tr>
+      <td style="padding:8px;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">${esc(d.project)}</td>
+      <td style="padding:8px;border:1px solid #e5e7eb;white-space:nowrap">${esc(d.klass)}<br><span style="color:#6b7280;font-size:11px">${esc(d.step)}</span></td>
+      <td style="padding:8px;border:1px solid #e5e7eb">${esc(d.reason)}<br><span style="color:#065f46;font-size:12px"><strong>Fix:</strong> ${esc(d.remedy)}</span></td>
+      <td style="padding:8px;border:1px solid #e5e7eb;white-space:nowrap"><a href="${esc(runUrl(d.repo, d.runId))}" style="color:#2563eb">Run</a></td>
+    </tr>`).join('')
+  const html = `
+    <div style="font-family:system-ui,sans-serif;max-width:760px;margin:0 auto">
+      <div style="background:#dc2626;color:white;padding:16px 24px;border-radius:8px 8px 0 0">
+        <h2 style="margin:0;font-size:18px">Prod-Promotion Failed — ${items.length} project(s)</h2>
+        <p style="margin:4px 0 0;font-size:14px;opacity:0.9">A manual production deploy did not complete. Production is unchanged (still on the last green build) — but it did not go live.</p>
+      </div>
+      <div style="padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#fef2f2">
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Projekt</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Klasse / Schritt</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Ursache &amp; Fix</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Link</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p style="margin-top:16px;font-size:12px;color:#6b7280">Alert-only: this watchdog never auto-deploys production. Deploy-Status live: backoffice.predivo.ch/deploy-status · gesendet ${new Date().toISOString()}</p>
+      </div>
+    </div>`
+  try {
+    const transporter = createTransport({
+      host: SMTP_HOST, port: parseInt(SMTP_PORT || '465', 10), secure: true, family: 4,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    })
+    await transporter.sendMail({
+      from: `Deploy Triage <${SMTP_USER}>`,
+      to: ALERT_EMAIL,
+      subject: `[PROD PROMO FAILED] ${items.length} project(s) — manual production deploy did not complete`,
+      html,
+    })
+    log(`  📧 prod-promotion alert emailed to ${ALERT_EMAIL} (${items.length} item(s))`)
+  } catch (e) {
+    log(`  promo email send failed: ${e.message.split('\n')[0]} (items still in deploy-triage.log)`)
   }
 }
 

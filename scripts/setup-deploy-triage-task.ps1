@@ -20,7 +20,9 @@
   It reads SMTP_HOST/PORT/USER/PASS + ALERT_EMAIL from the USER environment (so the task inherits
   them and the password stays out of git). Set once (already done 2026-07-19):
     [Environment]::SetEnvironmentVariable('SMTP_HOST','tertia.sui-inter.net','User')  # + PORT 465,
-    USER noreply@backoffice.predivo.ch, PASS <BackOffice mailbox pw>, ALERT_EMAIL roger@mueller.ro
+    USER noreply@backoffice.predivo.ch, PASS <BackOffice mailbox pw>, ALERT_EMAIL rogmueller1976@gmail.com
+    (ALERT_EMAIL repointed roger@mueller.ro -> rogmueller1976@gmail.com on 2026-07-21 so deploy alerts
+     land in the same Gmail the inbox-triage/cleanup automations manage — consistent with the rest of the fleet.)
   Test the email path any time:  $env:DEPLOY_TRIAGE_TEST_EMAIL='1'; node scripts\deploy-failure-triage.mjs
   (If SMTP/ALERT_EMAIL are unset the runner still works — it just logs instead of emailing.)
 #>
