@@ -134,15 +134,23 @@ and healthchecks heartbeat — no new automation). Runs as **free detection BEFO
 gate**, so it still fires even if the AI tier is disabled.
 
 - **What it does:** for each repo, take the LATEST `workflow_dispatch` `deploy.yml` run; if it
-  `failure`d within 7 days and hasn't been alerted (dedup by `repo@runId` in `deploy-triage-state.json`
-  under a `promo` key), classify it and email `ALERT_EMAIL`.
-- **Classes / remedy in the email:** `STAGING-GATE` (promoted commit has no green staging run — usual
-  cause: a paths‑ignore‑only commit like `.gitignore`/`docs/**`/`*.md`; the email says whether the
-  current HEAD is already promotable and gives the exact re‑dispatch command) · `DEPLOY-STEP`
-  (failed at an FTP/verify step — likely transient, re‑run) · `OTHER` (open the log).
-- **Never** dispatches, retries, or pushes anything — pure alert. Honors the master kill‑switch
-  `DEPLOY_TRIAGE_DISABLED=1`.
-- **Probes:** `PROMO_WATCH_DETECT_ONLY=1` (poll + classify + log, no email/state) ·
+  `failure`d within 7 days, classify it and take ONE action (tracked by `repo@runId` in
+  `deploy-triage-state.json` under a `promo` key):
+- **Classes + action:**
+  - `STAGING-GATE` (promoted commit has no green staging run — usual cause: a paths‑ignore‑only commit
+    like `.gitignore`/`docs/**`/`*.md`) → **ALERT** (email says whether current HEAD is already
+    promotable + the exact re‑dispatch command). Never auto‑promotes HEAD — that human "ship now?"
+    decision is the staging‑first design's whole point (deploy.yml "ask before production").
+  - `DEPLOY-STEP` (failed at a specific FTP/upload/verify step — a transient blip on a commit that
+    already passed the gate) → **AUTO‑RETRY ONCE** if the commit is still branch HEAD and the failure
+    is fresh (≤3h): `gh run rerun <id>` re‑runs the *same commit's* promotion, then a calm purple
+    "watching" email. If that retry fails again → **ESCALATE** (red alert, no second retry). If the
+    commit isn't HEAD, retry is disabled, or it's stale → ALERT instead (a human decides).
+  - `OTHER` (e.g. a build failure during the prod deploy) → **ALERT** (a retry can't fix code).
+- **Safety:** a rerun only re‑attempts the *exact* promotion a human already started on the *exact*
+  commit — it NEVER dispatches a new/other commit to production. Kill‑switches: `DEPLOY_TRIAGE_DISABLED=1`
+  (whole script) or `PROMO_AUTORETRY_DISABLED=1` (auto‑retry only → reverts to alert‑only).
+- **Probes:** `PROMO_WATCH_DETECT_ONLY=1` (poll + classify + log the decision, no rerun/email/state) ·
   `PROMO_WATCH_TEST_EMAIL=1` (sample alert) · `PROMO_WATCH_FORCE_RUN="Arivioo/backoffice=<runId>"`
   (classify a specific real failed promotion end‑to‑end and email it — used to prove the alarm).
 

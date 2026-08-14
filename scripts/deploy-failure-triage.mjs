@@ -72,6 +72,9 @@ const LOOKBACK_MS = 6 * 60 * 60 * 1000   // only diagnose recent breakage
 // anyone looks (this one sat ~9h on 2026-08-14). Look back a full week so a stale failure still
 // pages; dedup-by-runId (not time) keeps it to a single alert per failed promotion.
 const PROMO_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000
+// Auto-retry a transient (DEPLOY-STEP) prod promotion ONLY if it's fresh — a transient FTP/network
+// blip is minutes old. An old failure is not "transient"; a human should look. Retry is one-shot.
+const PROMO_AUTORETRY_WINDOW_MS = 3 * 60 * 60 * 1000
 const RUNS_PER_REPO = 12
 const MODEL = 'claude-opus-4-8'
 const MAX_TURNS = 60
@@ -477,10 +480,13 @@ function classifyPromoFailure(p, run, step) {
         : `Push a real (non-paths-ignore) commit to ${p.branch}, wait for the staging pipeline to go green, then promote.`,
     }
   }
-  if (/ftp|upload|mirror|clean|verify production|site-id|deploy/i.test(s)) {
+  // DEPLOY-STEP = a specific FTP/upload/verify step (the commit already passed the staging gate).
+  // Deliberately precise step names — NOT the bare "deploy" job fallback or "build" (those are real
+  // failures a retry can't fix), so only a genuine transient infra step is auto-retry-eligible.
+  if (/ftp|lftp|upload|mirror|clean old|verify production|site-id/i.test(s)) {
     return {
       klass: 'DEPLOY-STEP',
-      reason: `The production deploy failed at "${s}" — this can be a transient FTP/network blip or a real config issue.`,
+      reason: `The production deploy failed at "${s}" — typically a transient FTP/network blip on a commit that already passed the staging gate.`,
       remedy: `Open the run log; if it looks transient, re-run:  gh workflow run deploy.yml --repo ${p.repo} -f confirm=deploy`,
     }
   }
@@ -491,13 +497,26 @@ function classifyPromoFailure(p, run, step) {
   }
 }
 
-// Poll each repo's latest MANUAL prod promotion; alert once (dedup by repo@runId) on a recent failure.
-// PROMO_WATCH_DETECT_ONLY=1 → poll + classify + log what WOULD alert, no email, no state write.
+// Poll each repo's latest MANUAL prod promotion and act on a recent failure. State machine per run
+// (dedup/track by repo@runId in state.promo):
+//   · DEPLOY-STEP (transient FTP/verify) on a commit still == branch HEAD, fresh → AUTO-RETRY ONCE
+//     (`gh run rerun` re-runs the SAME commit's promotion), then a calm "watching" email.
+//   · A run we already retried that failed AGAIN → ESCALATE (alert, no second retry — no loop).
+//   · STAGING-GATE / OTHER / ineligible DEPLOY-STEP → ALERT once.
+// NEVER dispatches a fresh prod deploy of a NEW/other commit — a rerun only re-attempts the exact
+// promotion a human already started. Kill-switches: DEPLOY_TRIAGE_DISABLED=1 (whole script) or
+// PROMO_AUTORETRY_DISABLED=1 (auto-retry only → falls back to alert-only, the original behaviour).
+// PROMO_WATCH_DETECT_ONLY=1 → poll + classify + log the decision, no rerun, no email, no state write.
 async function checkProdPromotions() {
   const detectOnly = process.env.PROMO_WATCH_DETECT_ONLY === '1'
+  const autoRetry = process.env.PROMO_AUTORETRY_DISABLED !== '1'   // ON by default; kill-switch to disable
   const state = loadState()
   if (!state.promo) state.promo = {}
-  const findings = []
+
+  const toAlert = []    // STAGING-GATE / OTHER / ineligible DEPLOY-STEP — normal alert
+  const toRetry = []    // transient DEPLOY-STEP, eligible for a one-shot auto-retry
+  const toEscalate = [] // already auto-retried and still failing — alert, don't retry again
+
   for (const p of PROJECTS) {
     let runs
     try {
@@ -508,24 +527,74 @@ async function checkProdPromotions() {
     } catch (e) { log(`[promo skip] ${p.name}: run list failed (${e.message.split('\n')[0]})`); continue }
     if (!runs || runs.length === 0) continue          // static push-to-prod repos have no dispatch runs
     const latest = runs[0]
-    if (latest.status !== 'completed') continue        // in flight → let it finish
+    if (latest.status !== 'completed') continue        // in flight (incl. a rerun we started) → let it finish
     if (latest.conclusion !== 'failure') continue      // latest promotion is green/cancelled → nothing to flag
     if (Date.now() - new Date(latest.createdAt).getTime() > PROMO_LOOKBACK_MS) continue
+
     const key = `${p.repo}@${latest.databaseId}`
-    if (!detectOnly && state.promo[key]) continue      // already alerted for this failed promotion
+    const prior = state.promo[key] || null
     const { job, step } = failedJobStep(p.repo, latest.databaseId)
     const cls = classifyPromoFailure(p, latest, step)
-    findings.push({ project: p.name, repo: p.repo, runId: latest.databaseId, step: step || job, headSha: latest.headSha, title: latest.displayTitle, ...cls, key })
-    log(`[promo]${detectOnly ? ' [DETECT]' : ''} ${p.name}#${latest.databaseId}: FAILED prod promotion — ${cls.klass} ("${step || job}")`)
+    const finding = { project: p.name, repo: p.repo, runId: latest.databaseId, step: step || job, headSha: latest.headSha, title: latest.displayTitle, ...cls, key }
+
+    const ageMs = Date.now() - new Date(latest.createdAt).getTime()
+    const isHead = !!latest.headSha && latest.headSha === branchHead(p.repo, p.branch)
+    const retryEligible = cls.klass === 'DEPLOY-STEP' && autoRetry && isHead && ageMs <= PROMO_AUTORETRY_WINDOW_MS
+
+    let decision
+    if (prior && prior.retried && !prior.escalated) decision = 'escalate'   // retried once, still red
+    else if (prior && (prior.alerted || prior.escalated)) decision = 'skip' // already handled this run
+    else if (retryEligible) decision = 'retry'
+    else decision = 'alert'
+
+    log(`[promo]${detectOnly ? ' [DETECT]' : ''} ${p.name}#${latest.databaseId}: ${cls.klass} ("${step || job}") → ${decision.toUpperCase()}${decision === 'alert' && cls.klass === 'DEPLOY-STEP' ? ` (retry skipped: ${!autoRetry ? 'disabled' : !isHead ? 'commit≠HEAD' : 'stale'})` : ''}`)
+    if (decision === 'skip') continue
+    if (decision === 'retry') toRetry.push(finding)
+    else if (decision === 'escalate') toEscalate.push(finding)
+    else toAlert.push(finding)
   }
-  if (findings.length === 0) { log(`prod-promotion watchdog:${detectOnly ? ' [DETECT]' : ''} no un-alerted failed promotions.`); return }
-  if (detectOnly) { log(`prod-promotion watchdog: [DETECT] would alert on ${findings.length} — ${findings.map((f) => `${f.project}#${f.runId}`).join(', ')}`); return }
-  await sendPromoEmail(findings)
-  for (const f of findings) state.promo[f.key] = { at: new Date().toISOString(), runId: f.runId, klass: f.klass }
+
+  if (toAlert.length + toRetry.length + toEscalate.length === 0) {
+    log(`prod-promotion watchdog:${detectOnly ? ' [DETECT]' : ''} no actionable failed promotions.`)
+    return
+  }
+  if (detectOnly) {
+    const fmt = (arr, tag) => arr.map((f) => `${tag}:${f.project}#${f.runId}`)
+    log(`prod-promotion watchdog: [DETECT] ${[...fmt(toRetry, 'RETRY'), ...fmt(toEscalate, 'ESCALATE'), ...fmt(toAlert, 'ALERT')].join(', ') || 'nothing'}`)
+    return
+  }
+
+  // 1. Auto-retry transient DEPLOY-STEP promotions — one-shot, re-runs the SAME commit's promotion.
+  const retried = []
+  for (const f of toRetry) {
+    try {
+      gh(`run rerun ${f.runId} --repo ${f.repo}`)
+      state.promo[f.key] = { at: new Date().toISOString(), runId: f.runId, klass: f.klass, retried: true }
+      retried.push(f)
+      log(`  ♻️  auto-retried prod promotion ${f.project}#${f.runId} (transient DEPLOY-STEP, commit==HEAD, one-shot)`)
+    } catch (e) {
+      log(`  auto-retry FAILED for ${f.project}#${f.runId}: ${e.message.split('\n')[0]} — alerting instead`)
+      state.promo[f.key] = { at: new Date().toISOString(), runId: f.runId, klass: f.klass, alerted: true }
+      toAlert.push(f)   // rerun call itself failed → fall back to a normal alert
+    }
+  }
+  if (retried.length > 0) await sendPromoEmail(retried, { mode: 'retried' })
+
+  // 2. Escalations (retry already spent, still failing) + normal alerts — one email.
+  const alertItems = [
+    ...toEscalate.map((f) => ({ ...f, escalated: true, reason: `Auto-retry was already attempted and it failed again — this needs you. ${f.reason}` })),
+    ...toAlert,
+  ]
+  if (alertItems.length > 0) {
+    await sendPromoEmail(alertItems, { mode: 'alert' })
+    for (const f of toEscalate) state.promo[f.key] = { ...(state.promo[f.key] || {}), at: new Date().toISOString(), runId: f.runId, klass: f.klass, retried: true, escalated: true }
+    for (const f of toAlert) if (!state.promo[f.key]?.escalated) state.promo[f.key] = { at: new Date().toISOString(), runId: f.runId, klass: f.klass, alerted: true }
+  }
+
   saveState(state)
 }
 
-async function sendPromoEmail(items) {
+async function sendPromoEmail(items, { mode = 'alert' } = {}) {
   if (!items || items.length === 0) return
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ALERT_EMAIL } = process.env
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !ALERT_EMAIL) {
@@ -536,31 +605,40 @@ async function sendPromoEmail(items) {
   try { ({ createTransport } = await import('nodemailer')) }
   catch { log('  (promo email skipped — nodemailer not available)'); return }
 
+  const retriedMode = mode === 'retried'
   const esc = (s) => String(s ?? '').replace(/[<>&]/g, (m) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[m]))
   const rows = items.map((d) => `
     <tr>
       <td style="padding:8px;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">${esc(d.project)}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;white-space:nowrap">${esc(d.klass)}<br><span style="color:#6b7280;font-size:11px">${esc(d.step)}</span></td>
-      <td style="padding:8px;border:1px solid #e5e7eb">${esc(d.reason)}<br><span style="color:#065f46;font-size:12px"><strong>Fix:</strong> ${esc(d.remedy)}</span></td>
+      <td style="padding:8px;border:1px solid #e5e7eb">${esc(d.reason)}${retriedMode ? '' : `<br><span style="color:#065f46;font-size:12px"><strong>Fix:</strong> ${esc(d.remedy)}</span>`}</td>
       <td style="padding:8px;border:1px solid #e5e7eb;white-space:nowrap"><a href="${esc(runUrl(d.repo, d.runId))}" style="color:#2563eb">Run</a></td>
     </tr>`).join('')
+  const headerBg = retriedMode ? '#7c3aed' : '#dc2626'
+  const headerTitle = retriedMode
+    ? `Prod-Promotion auto-retried — ${items.length} project(s)`
+    : `Prod-Promotion Failed — ${items.length} project(s)`
+  const headerSub = retriedMode
+    ? 'A transient production-deploy failure was automatically re-run (same commit, one-shot). No action needed unless it fails again — you will get a second email if it does.'
+    : 'A manual production deploy did not complete. Production is unchanged (still on the last green build) — but it did not go live.'
+  const thBg = retriedMode ? '#f5f3ff' : '#fef2f2'
   const html = `
     <div style="font-family:system-ui,sans-serif;max-width:760px;margin:0 auto">
-      <div style="background:#dc2626;color:white;padding:16px 24px;border-radius:8px 8px 0 0">
-        <h2 style="margin:0;font-size:18px">Prod-Promotion Failed — ${items.length} project(s)</h2>
-        <p style="margin:4px 0 0;font-size:14px;opacity:0.9">A manual production deploy did not complete. Production is unchanged (still on the last green build) — but it did not go live.</p>
+      <div style="background:${headerBg};color:white;padding:16px 24px;border-radius:8px 8px 0 0">
+        <h2 style="margin:0;font-size:18px">${headerTitle}</h2>
+        <p style="margin:4px 0 0;font-size:14px;opacity:0.9">${headerSub}</p>
       </div>
       <div style="padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
         <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:#fef2f2">
+          <thead><tr style="background:${thBg}">
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Projekt</th>
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Klasse / Schritt</th>
-            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Ursache &amp; Fix</th>
+            <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">${retriedMode ? 'Ursache' : 'Ursache &amp; Fix'}</th>
             <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">Link</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-        <p style="margin-top:16px;font-size:12px;color:#6b7280">Alert-only: this watchdog never auto-deploys production. Deploy-Status live: backoffice.predivo.ch/deploy-status · gesendet ${new Date().toISOString()}</p>
+        <p style="margin-top:16px;font-size:12px;color:#6b7280">${retriedMode ? 'Auto-heal re-runs the SAME commit\'s promotion once for transient failures only; it never dispatches a new/other commit to production.' : 'This watchdog never dispatches a new production deploy — it alerts, and only auto-retries a transient failure on the exact commit you already promoted.'} Deploy-Status live: backoffice.predivo.ch/deploy-status · gesendet ${new Date().toISOString()}</p>
       </div>
     </div>`
   try {
@@ -571,10 +649,12 @@ async function sendPromoEmail(items) {
     await transporter.sendMail({
       from: `Deploy Triage <${SMTP_USER}>`,
       to: ALERT_EMAIL,
-      subject: `[PROD PROMO FAILED] ${items.length} project(s) — manual production deploy did not complete`,
+      subject: retriedMode
+        ? `[PROD PROMO] auto-retried ${items.length} transient failure(s) — watching`
+        : `[PROD PROMO FAILED] ${items.length} project(s) — manual production deploy did not complete`,
       html,
     })
-    log(`  📧 prod-promotion alert emailed to ${ALERT_EMAIL} (${items.length} item(s))`)
+    log(`  📧 prod-promotion ${retriedMode ? 'auto-retry notice' : 'alert'} emailed to ${ALERT_EMAIL} (${items.length} item(s))`)
   } catch (e) {
     log(`  promo email send failed: ${e.message.split('\n')[0]} (items still in deploy-triage.log)`)
   }
