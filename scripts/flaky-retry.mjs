@@ -22,24 +22,17 @@
  * used by auto-heal.mjs for cross-repo `gh workflow run`).
  */
 import { execSync } from 'child_process'
+import { getFleet } from '../lib/fleet.mjs'
 
 const LOOKBACK_MS = 3 * 60 * 60 * 1000
 const RUNS_PER_REPO = 15
 
-// Fleet: repo + deploy branch (mirrors auto-heal.mjs PROJECT_CONFIG).
-const PROJECTS = [
-  { name: 'ReplyFlow', repo: 'Arivioo/replyflow', branch: 'main' },
-  { name: 'SignalScore', repo: 'Arivioo/signalscore', branch: 'main' },
-  { name: 'ChannelMover', repo: 'Arivioo/ChannelMover', branch: 'main' },
-  { name: 'Valrano', repo: 'Arivioo/Valrano', branch: 'main' },
-  { name: 'BoatBuddy', repo: 'Arivioo/BoatBuddy', branch: 'main' },
-  { name: 'BackOffice', repo: 'Arivioo/backoffice', branch: 'main' },
-  { name: 'ScoutCopilot', repo: 'Arivioo/ScoutCopilot', branch: 'master' },
-  { name: 'Distribution-OS', repo: 'Arivioo/distribution-os', branch: 'master' },
-  { name: 'LaunchReady', repo: 'Arivioo/launchready', branch: 'master' },
-  { name: 'Predivo', repo: 'Arivioo/predivo', branch: 'master' },
-  { name: 'Arivioo', repo: 'Arivioo/Cursor_Arivioo', branch: 'main' },
-]
+// Fleet: name/repo/deploy-branch from the DB-backed registry (fleet_products) via getFleet(). Filter
+// to deploy-monitored products (branch != null). Falls back to the identical hardcoded superset on any
+// DB failure, so retry can never lose a product; a launched product auto-appears once its row exists.
+const { fleet: _fleet, source: _fleetSource } = await getFleet()
+const PROJECTS = _fleet.filter((p) => p.branch)
+console.log(`flaky-retry: fleet source = ${_fleetSource} (${PROJECTS.length} deploy-monitored)`)
 
 // Flaky/infra step names — safe to auto-rerun.
 const FLAKY = /e2e|gate-e2e|ftp|supabase cli|edge function|verify .*alive|deploy .*staging|install deps|puppeteer|playwright|seed|rate limit|npm ci|setup-node|checkout|cache|prerender|smoke/i
