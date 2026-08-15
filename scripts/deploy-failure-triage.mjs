@@ -36,21 +36,14 @@
 import { execSync, execFileSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, rmSync } from 'fs'
 import { join } from 'path'
+import { getFleet } from '../lib/fleet.mjs'
 
-// Fleet: repo + deploy branch (mirrors flaky-retry.mjs / auto-heal PROJECT_CONFIG).
-const PROJECTS = [
-  { name: 'ReplyFlow', repo: 'Arivioo/replyflow', branch: 'main' },
-  { name: 'SignalScore', repo: 'Arivioo/signalscore', branch: 'main' },
-  { name: 'ChannelMover', repo: 'Arivioo/ChannelMover', branch: 'main' },
-  { name: 'Valrano', repo: 'Arivioo/Valrano', branch: 'main' },
-  { name: 'BoatBuddy', repo: 'Arivioo/BoatBuddy', branch: 'main' },
-  { name: 'BackOffice', repo: 'Arivioo/backoffice', branch: 'main' },
-  { name: 'ScoutCopilot', repo: 'Arivioo/ScoutCopilot', branch: 'master' },
-  { name: 'Distribution-OS', repo: 'Arivioo/distribution-os', branch: 'master' },
-  { name: 'LaunchReady', repo: 'Arivioo/launchready', branch: 'master' },
-  { name: 'Predivo', repo: 'Arivioo/predivo', branch: 'master' },
-  { name: 'Arivioo', repo: 'Arivioo/Cursor_Arivioo', branch: 'main' },
-]
+// Fleet: name/repo/deploy-branch from the DB-backed registry (fleet_products) via getFleet(). Filter
+// to deploy-monitored products (branch != null). Falls back to the identical hardcoded superset on any
+// DB failure, so triage can never lose a product; a launched product auto-appears once its row exists.
+const { fleet: _fleet, source: _fleetSource } = await getFleet()
+const PROJECTS = _fleet.filter((p) => p.branch)
+console.log(`deploy-triage: fleet source = ${_fleetSource} (${PROJECTS.length} deploy-monitored)`)
 
 // Real code failures — the class that needs a fix, not a retry. Mirrors flaky-retry CODE, plus the
 // broad e2e/integration "gate" jobs which are code when they fail on the current HEAD (a retry
@@ -315,7 +308,7 @@ async function main() {
   // Ops probe: verify the alert-email config end-to-end without a real failure.
   if (process.env.DEPLOY_TRIAGE_TEST_EMAIL === '1') {
     log('DEPLOY_TRIAGE_TEST_EMAIL=1 — sending a sample alert...')
-    await sendTriageEmail([{ project: 'SampleProject', step: 'gate-e2e', class: 'ESCALATION (test)', rootCause: 'This is a test of the deploy-triage alert email — no real failure.', action: 'none', escalate: true, runUrl: 'https://github.com/Arivioo/production-monitor/actions' }])
+    await sendTriageEmail([{ project: 'SampleProject', step: 'gate-e2e', class: 'ESCALATION (test)', rootCause: 'This is a test of the deploy-triage alert email — no real failure.', action: 'none', escalate: true, runUrl: 'https://github.com/Predivo-GmbH/production-monitor/actions' }])
     return
   }
 

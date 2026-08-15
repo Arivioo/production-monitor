@@ -37,7 +37,7 @@ const rows = resolved
         <td style="padding:8px;border:1px solid #e5e7eb;font-weight:600;white-space:nowrap">${e.name}</td>
         <td style="padding:8px;border:1px solid #e5e7eb">${e.workflow}</td>
         <td style="padding:8px;border:1px solid #e5e7eb;color:#6b7280;white-space:nowrap">war ${e.redHours} h rot</td>
-        <td style="padding:8px;border:1px solid #e5e7eb"><a href="https://github.com/Arivioo/${e.repo}/actions" style="color:#2563eb">Runs ansehen</a></td>
+        <td style="padding:8px;border:1px solid #e5e7eb"><a href="https://github.com/Predivo-GmbH/${e.repo}/actions" style="color:#2563eb">Runs ansehen</a></td>
       </tr>`,
   )
   .join('')
