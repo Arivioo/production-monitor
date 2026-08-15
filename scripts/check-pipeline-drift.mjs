@@ -26,23 +26,14 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
+import { getFleet } from '../lib/fleet.mjs'
 
-// name, GitHub owner/repo (for CI fetch), local dir, staged (=staging-gated → §4a applies).
+// Fleet from the DB-backed registry (fleet_products) via getFleet(); each product carries `staged`
+// (=staging-gated → §4a applies). Falls back to the identical hardcoded superset on any DB failure, so
+// this drift check can never lose a product. A launched product auto-appears once its row exists.
 // Static/push-to-prod repos (staged:false): §4a N/A, but §1/§3 FTP resilience + cancel-in-progress still apply.
-const FLEET = [
-  { name: 'ReplyFlow',       repo: 'Arivioo/ReplyFlow',        dir: 'replyflow',       staged: true },
-  { name: 'SignalScore',     repo: 'Arivioo/signalscore',      dir: 'signalscore',     staged: true },
-  { name: 'ChannelMover',    repo: 'Arivioo/ChannelMover',     dir: 'ChannelMover',    staged: true },
-  { name: 'BoatBuddy',       repo: 'Arivioo/BoatBuddy',        dir: 'BoatBuddy',       staged: true },
-  { name: 'Valrano',         repo: 'Arivioo/Valrano',          dir: 'Valrano',         staged: true },
-  { name: 'BackOffice',      repo: 'Arivioo/BackOffice',       dir: 'BackOffice',      staged: false },
-  { name: 'predivo',         repo: 'Arivioo/predivo',          dir: 'predivo',         staged: false },
-  { name: 'ScoutCopilot',    repo: 'Arivioo/ScoutCopilot',     dir: 'ScoutCopilot',    staged: false },
-  { name: 'Distribution-OS', repo: 'Arivioo/Distribution-OS',  dir: 'Distribution-OS', staged: false },
-  { name: 'launchready',     repo: 'Arivioo/launchready',      dir: 'launchready',     staged: false },
-  { name: 'arivioo',         repo: 'Arivioo/Cursor_Arivioo',   dir: 'arivioo',         staged: false },
-  { name: 'jass-tour-ui-kit',repo: 'Arivioo/jass-tour-ui-kit', dir: 'jass-tour-ui-kit',staged: false },
-]
+const { fleet: FLEET, source: FLEET_SOURCE } = await getFleet()
+console.log(`pipeline-drift: fleet source = ${FLEET_SOURCE} (${FLEET.length} products, ${FLEET.filter((p) => p.staged).length} staged)`)
 
 const LOCAL_ROOT = process.env.LOCAL_FLEET_ROOT
 
