@@ -5,7 +5,10 @@
 
 set -euo pipefail
 
-OWNER="Arivioo"
+# Org renamed Arivioo -> Predivo-GmbH (2026-08). GitHub auto-follows the redirect
+# for GET, but NOT for write (PUT/POST) requests, which 307 and fail. Use the
+# canonical org name so the data.json/changelog.json PUT calls succeed.
+OWNER="Predivo-GmbH"
 DASHBOARD_REPO="project-dashboard"
 
 # Fetch current data.json from the dashboard repo
