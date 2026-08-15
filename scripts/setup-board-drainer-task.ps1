@@ -27,8 +27,10 @@ $runner   = 'C:\Business\Internal Projects\production-monitor\scripts\board-drai
 if (-not (Test-Path $runner)) { throw "Runner not found: $runner" }
 
 # ENABLED but NOT LIVE for the supervised first cycles (dry-run: classify + log only, touches nothing).
-# After review, add 'set BOARD_DRAINER_LIVE=1 &&' to go live.
-$cmd = ('/c set BOARD_DRAINER_ENABLED=1 && "{0}" "{1}"' -f $node, $runner)
+# After review, add 'set "BOARD_DRAINER_LIVE=1" &&' to go live.
+# NOTE: quote the set assignments (set "VAR=1") — an unquoted 'set VAR=1 &&' captures the trailing
+# space into the value ("1 "), which fails the ==='1' check and silently self-skips.
+$cmd = ('/c set "BOARD_DRAINER_ENABLED=1" && "{0}" "{1}"' -f $node, $runner)
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument $cmd
 
 $start   = (Get-Date).AddMinutes(2)
