@@ -25,23 +25,15 @@
 import { existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
+import { getFleet } from '../lib/fleet.mjs'
 
 // gates: 'required' = an app with auth/DB/lists/dialogs that MUST carry the v11 gates.
 //        'na'       = static marketing site or internal tool — nothing to browser-gate.
-const FLEET = [
-  { name: 'ReplyFlow',        repo: 'Arivioo/ReplyFlow',        dir: 'replyflow',        gates: 'required' },
-  { name: 'SignalScore',      repo: 'Arivioo/signalscore',      dir: 'signalscore',      gates: 'required' },
-  { name: 'ChannelMover',     repo: 'Arivioo/ChannelMover',     dir: 'ChannelMover',     gates: 'required' },
-  { name: 'BoatBuddy',        repo: 'Arivioo/BoatBuddy',        dir: 'BoatBuddy',        gates: 'required' },
-  { name: 'BackOffice',       repo: 'Arivioo/BackOffice',       dir: 'BackOffice',       gates: 'required' },
-  { name: 'Valrano',          repo: 'Arivioo/Valrano',          dir: 'Valrano',          gates: 'required' },
-  { name: 'ScoutCopilot',     repo: 'Arivioo/ScoutCopilot',     dir: 'ScoutCopilot',     gates: 'required' },
-  { name: 'Distribution-OS',  repo: 'Arivioo/Distribution-OS',  dir: 'Distribution-OS',  gates: 'required' },
-  { name: 'launchready',      repo: 'Arivioo/launchready',      dir: 'launchready',      gates: 'deferred' }, // Next.js, off the fleet-standard Vite stack; gate enrollment HELD pending Roger's stack decision (2026-08-04)
-  { name: 'arivioo',          repo: 'Arivioo/Cursor_Arivioo',   dir: 'arivioo',          gates: 'required' },
-  { name: 'jass-tour-ui-kit', repo: 'Arivioo/jass-tour-ui-kit', dir: 'jass-tour-ui-kit', gates: 'required' },
-  { name: 'predivo',          repo: 'Arivioo/predivo',          dir: 'predivo',          gates: 'na' },
-]
+// Fleet now comes from the DB-backed registry (fleet_products) via getFleet(), which FALLS BACK to
+// the canonical hardcoded list on any DB failure — so this check can never lose a product / silently
+// pass. A launched product auto-appears here once its fleet_products row exists (auto-enroll).
+const { fleet: FLEET, source: FLEET_SOURCE } = await getFleet()
+console.log(`gate-coverage: fleet source = ${FLEET_SOURCE} (${FLEET.length} products)`)
 
 const WORKFLOW = 'staging-gates.yml'
 const LOCAL_ROOT = process.env.LOCAL_FLEET_ROOT
