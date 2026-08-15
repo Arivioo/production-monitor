@@ -40,5 +40,8 @@ jobs:
         env:
           # Fleet-wide PAT (repo + actions:write) — same token auto-heal uses to dispatch deploys.
           GH_TOKEN: ${{ secrets.DASHBOARD_PAT }}
+          # DB-backed fleet (getFleet). Optional: absent -> getFleet falls back to the hardcoded list.
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           FLAKY_RETRY_DISABLED: ${{ vars.FLAKY_RETRY_DISABLED }}

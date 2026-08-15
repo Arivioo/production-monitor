@@ -24,3 +24,6 @@ jobs:
         env:
           # classic PAT with repo:read across the Arivioo org (same secret the drift check uses)
           GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN || secrets.DASHBOARD_PAT }}
+          # DB-backed fleet (getFleet). Optional: absent -> getFleet falls back to the hardcoded list.
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}

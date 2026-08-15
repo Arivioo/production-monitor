@@ -52,6 +52,9 @@ jobs:
           # in CI (dormant safety net); DASHBOARD_PAT activates it. Falls back to
           # FLEET_READ_TOKEN if a dedicated least-privilege token is added later.
           GH_TOKEN: ${{ secrets.FLEET_READ_TOKEN || secrets.DASHBOARD_PAT }}
+          # DB-backed fleet (getFleet). Optional: absent -> getFleet falls back to the hardcoded list.
+          BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
+          BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
 
       - name: Send alert on failure
         if: failure()
