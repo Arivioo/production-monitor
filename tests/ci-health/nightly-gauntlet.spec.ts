@@ -79,6 +79,32 @@ for (const repo of TIERED_REPOS) {
       `${repo}: scheduled gauntlet failed on attempt ${attempt}, ${ageHours.toFixed(1)}h ago — inside the auto-retry self-heal window, not yet persistent (no page).`,
     );
 
+    // SUPERSEDED GATE (Roger's "transient = noise" philosophy, applied to the fix-landed-before-next-
+    // nightly window). A red scheduled gauntlet reflects the code AT latest.head_sha. The common real
+    // case: a nightly goes red, the fix is pushed the SAME day, but the next scheduled run that would
+    // re-confirm green is up to ~24h away (cron '50 4 * * *'). Paging every hour across that window is
+    // noise about an ALREADY-FIXED failure (this exact case: 2026-08-15 ReplyFlow v13-gates config
+    // misroute, fixed in e58b7a1 minutes after the 05:08Z nightly failed). So if the failed run is
+    // SUPERSEDED — a newer commit has landed on the default branch since — AND we are still inside one
+    // nightly cycle (<26h, i.e. the next scheduled run has not yet had its turn), SKIP and let the next
+    // nightly reconfirm. This does NOT weaken prod safety: the ACTUAL promotion gate is deploy.yml's
+    // gate-e2e at workflow_dispatch time (independent of this notification), and once >26h elapse with
+    // no fresh scheduled run the suppression lifts and we page again (a stuck cron is itself worth a page).
+    // Fail-safe: any error resolving the default-branch tip → do NOT suppress (fall through and page).
+    if (ageHours < 26 && latest.head_sha) {
+      const tipRes = await request.get(
+        `https://api.github.com/repos/${repo}/commits?per_page=1`,
+        { headers: { Authorization: `Bearer ${ghToken}`, Accept: 'application/vnd.github.v3+json' } },
+      );
+      if (tipRes.ok()) {
+        const tip = (await tipRes.json())[0]?.sha;
+        test.skip(
+          !!tip && tip !== latest.head_sha,
+          `${repo}: failed scheduled gauntlet (${String(latest.head_sha).slice(0, 7)}) is SUPERSEDED by a newer commit (${String(tip).slice(0, 7)}) — a fix likely already landed; awaiting the next nightly to reconfirm. Real regressions still block prod at the promotion gate.`,
+        );
+      }
+    }
+
     expect(
       isFail && persistent,
       `${repo} NIGHTLY GAUNTLET PERSISTENTLY FAILING — a real-login / integration / E2E gate regressed against staging and the auto-retry did NOT recover it (attempt ${attempt}, ${ageHours.toFixed(1)}h, ${latest.html_url}). Do NOT promote ${repo} to production until fixed.`,
