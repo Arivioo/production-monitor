@@ -18,8 +18,9 @@
  *                 product code, business decisions, low-confidence diagnoses, Roger's OAuth hands.
  *
  * DEFAULTS SAFE: dry-run unless BOARD_DRAINER_LIVE=1, and self-skips entirely unless
- *   BOARD_DRAINER_ENABLED=1. So this file sits wired-but-off until Roger enables it (Stage 6),
- *   mirroring the agent-triage paid-key gate. Global kill switch: BOARD_DRAINER_DISABLED=1.
+ *   BOARD_DRAINER_ENABLED=1. Stage-6 go-live APPROVED 2026-08-18: the scheduled task now registers
+ *   both ENABLED and LIVE (see scripts/setup-board-drainer-task.ps1). Global kill switch:
+ *   BOARD_DRAINER_DISABLED=1.
  *
  * Env knobs:
  *   BOARD_DRAINER_ENABLED=1   on-switch (else self-skip loudly, exit 0)
@@ -101,6 +102,11 @@ async function upsertIncident(secret, payload) {
 // A HARD-ESCALATE class is never dispatched to the agent — it needs Roger's hands or a forbidden verb.
 const HUMAN_HANDS = /\b(oauth|re-?auth|reconnect|reconnect|google account|log ?in|sign ?in|vendor|support ticket|business decision|pricing|refund|new secret|new credential|new api key|rotate|payment|invoice|pay\b|charge|bank|stripe dashboard)\b/i
 const DESTRUCTIVE_DB = /\b(delete|drop|truncate|purge|destroy|remove (?:the )?(?:row|record|connection|table)|ddl|migration to (?:prod|production))\b/i
+// EXPECTED business state, not an incident: a vendor plan/subscription lapsed (e.g. Smartlead
+// "HTTP 401 Plan expired"). These get upserted as status=expected (visible but muted on the board,
+// not counted as open) instead of sitting in Open Incidents forever. Checked BEFORE HUMAN_HANDS —
+// a lapsed plan is noted, not escalated.
+const EXPECTED_BUSINESS = /\b(plan expired|plan (?:lapsed|cancelled|canceled|cancellation)|subscription (?:expired|lapsed|inactive|cancelled|canceled)|payment required|upgrade required|billing suspended|account (?:suspended|paused))\b/i
 
 // Every open incident is RE-VERIFIED against the live source each run — this is the root fix for the
 // class that bit us (a self-healed false-red that sat blocked because the email-driven Closer never
@@ -110,6 +116,11 @@ const DESTRUCTIVE_DB = /\b(delete|drop|truncate|purge|destroy|remove (?:the )?(?
 function classify(inc) {
   const text = `${inc.who_must_act || ''} || ${inc.root_cause || ''} || ${inc.title || ''}`
   const who = (inc.who_must_act || '').trim().toLowerCase()
+
+  // Expected business state wins over every other class — it is noted, never worked or escalated.
+  if (EXPECTED_BUSINESS.test(text)) {
+    return { owner: 'none', mode: 'note', reason: 'expected business state (vendor plan/subscription lapsed) — noted, no action' }
+  }
 
   const ownerRoger = /^roger\b/i.test(who)
   const humanHands = HUMAN_HANDS.test(text)
@@ -260,13 +271,27 @@ async function main() {
   // In DRY-RUN or FIXTURE we stop here: classification only, nothing dispatched or written.
   if (!LIVE || FIXTURE) {
     const fixes = toWork.filter((r) => r.cls.mode === 'fix').length
-    log(`DRY-RUN: would FIX ${fixes}, VERIFY ${toWork.length - fixes}. No agent run, no write-back.`)
+    const notes = toWork.filter((r) => r.cls.mode === 'note').length
+    log(`DRY-RUN: would FIX ${fixes}, VERIFY ${toWork.length - fixes - notes}, NOTE-as-expected ${notes}. No agent run, no write-back.`)
     saveState(state)
     return
   }
 
   // 3. LIVE: dispatch + write back, with dedup-stuck escalation
   for (const { inc, cls } of toWork) {
+    if (cls.mode === 'note') {
+      // Expected business state: no agent dispatch, no fix — note it on the board as `expected`.
+      log(`  ${inc.key}: expected business state — upserting status=expected (noted, no action).`)
+      await upsertIncident(secret, {
+        p_source: inc.source, p_key: inc.key, p_title: inc.title, p_severity: 'info', p_status: 'expected',
+        p_root_cause: `[board-drainer] ${inc.root_cause || inc.title} — vendor plan expired — noted, no action`.slice(0, 2000),
+        p_who_must_act: null,
+        p_evidence: { by: 'board-drainer', class: 'EXPECTED', note: 'vendor plan expired — noted, no action' },
+      })
+      delete state.attempts[inc.key]
+      saveState(state)
+      continue
+    }
     const attempts = (state.attempts[inc.key] || 0) + 1
     if (attempts > MAX_ATTEMPTS) {
       log(`  ${inc.key}: ${attempts - 1} prior failed attempts — escalating as auto-fix-stuck (owner Roger).`)

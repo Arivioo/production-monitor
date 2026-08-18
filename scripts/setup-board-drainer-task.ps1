@@ -1,20 +1,21 @@
 <#
   Registers the "Board-Drainer-LocalRunner" Windows Scheduled Task on Roger's always-on desktop.
 
-  STAGE 6 — DO NOT RUN THIS UNTIL ROGER HAS REVIEWED. Registering it is the go-live step.
+  STAGE 6 — GO-LIVE APPROVED by Roger 2026-08-18. This script now registers the task LIVE
+  (BOARD_DRAINER_LIVE=1): the drainer actually dispatches fixes and writes back to the board.
 
   Every 20 minutes it runs scripts/board-drainer.mjs, which reads the cockpit Monitoring Board
   (monitoring_incidents), re-verifies every open incident against the live system, FIXES the
   owner=Claude items an autonomous dev session may safely handle (monitor/spec/CI/config/pipeline;
-  staging deploy for product code), auto-CLOSES self-healed false-reds (any owner) with a receipt,
+  staging deploy for product code), NOTES plan-expired/expected-business-state rows as
+  status=expected (muted, not open), auto-CLOSES self-healed false-reds (any owner) with a receipt,
   and ESCALATES the rest to Roger. Runs on the Claude subscription (no API cost), same interactive
   logon as AgentTriage-LocalRunner so it inherits ~/.claude.json auth + gh credentials.
 
   SAFETY: board-drainer.mjs self-skips unless BOARD_DRAINER_ENABLED=1, and only ACTS when
-  BOARD_DRAINER_LIVE=1. This task registers it ENABLED but NOT LIVE by default — first cycles are
-  dry-run (classify + log only) for supervised review. Flip to live by adding BOARD_DRAINER_LIVE=1
-  after the dry-run classifications look right. Kill switch: machine env BOARD_DRAINER_DISABLED=1,
-  or Disable-ScheduledTask -TaskName Board-Drainer-LocalRunner.
+  BOARD_DRAINER_LIVE=1. This task registers it ENABLED and LIVE. To go back to supervised dry-run,
+  remove the BOARD_DRAINER_LIVE set from $cmd below and re-run. Kill switch: machine env
+  BOARD_DRAINER_DISABLED=1, or Disable-ScheduledTask -TaskName Board-Drainer-LocalRunner.
 
   Remove with: Unregister-ScheduledTask -TaskName "Board-Drainer-LocalRunner" -Confirm:$false
 #>
@@ -26,11 +27,11 @@ $runner   = 'C:\Business\Internal Projects\production-monitor\scripts\board-drai
 
 if (-not (Test-Path $runner)) { throw "Runner not found: $runner" }
 
-# ENABLED but NOT LIVE for the supervised first cycles (dry-run: classify + log only, touches nothing).
-# After review, add 'set "BOARD_DRAINER_LIVE=1" &&' to go live.
+# ENABLED and LIVE (go-live approved 2026-08-18): the drainer dispatches fixes and writes back.
+# To return to supervised dry-run, drop the BOARD_DRAINER_LIVE set below and re-run this script.
 # NOTE: quote the set assignments (set "VAR=1") — an unquoted 'set VAR=1 &&' captures the trailing
 # space into the value ("1 "), which fails the ==='1' check and silently self-skips.
-$cmd = ('/c set "BOARD_DRAINER_ENABLED=1" && "{0}" "{1}"' -f $node, $runner)
+$cmd = ('/c set "BOARD_DRAINER_ENABLED=1" && set "BOARD_DRAINER_LIVE=1" && "{0}" "{1}"' -f $node, $runner)
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument $cmd
 
 $start   = (Get-Date).AddMinutes(2)
@@ -46,7 +47,7 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
 
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-    -Description 'Board Drainer: every 20 min, re-verify every open Monitoring Board incident; fix owner=Claude items, auto-close self-healed false-reds with a receipt, escalate the rest. Subscription auth, no API cost. Starts dry-run; add BOARD_DRAINER_LIVE=1 after supervised review.' | Out-Null
+    -Description 'Board Drainer: every 20 min, re-verify every open Monitoring Board incident; fix owner=Claude items, note expected business state as status=expected, auto-close self-healed false-reds with a receipt, escalate the rest. Subscription auth, no API cost. LIVE since 2026-08-18 (go-live approved); drop BOARD_DRAINER_LIVE=1 to revert to dry-run.' | Out-Null
 
-Write-Output "Registered task '$taskName' (every 20 min, next ~$start). DRY-RUN until BOARD_DRAINER_LIVE=1 is added."
+Write-Output "Registered task '$taskName' (every 20 min, next ~$start). LIVE (BOARD_DRAINER_LIVE=1)."
 Get-ScheduledTask -TaskName $taskName | Select-Object TaskName, State | Format-Table -AutoSize

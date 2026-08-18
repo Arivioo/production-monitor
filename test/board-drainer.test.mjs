@@ -35,6 +35,10 @@ t('unowned/unknown -> FIX mode (never park on Roger)', () => {
   const c = classify({ who_must_act: '', root_cause: 'CI step failed', title: 'build red' })
   assert.equal(c.mode, 'fix'); assert.equal(c.owner, 'claude')
 })
+t('vendor PLAN EXPIRED -> NOTE mode (upsert expected, never worked/escalated)', () => {
+  const c = classify({ who_must_act: 'Roger - renew the Smartlead plan', root_cause: 'HTTP 401 Plan expired', title: 'BackOffice Outreach: sync failed (Smartlead plan expired)' })
+  assert.equal(c.mode, 'note'); assert.equal(c.owner, 'none')
+})
 
 // ── verdictToUpsert receipt-guard ──────────────────────────────────────────────
 const inc = { source: 'production-monitor', key: 'k1', title: 'x', severity: 'warning' }
