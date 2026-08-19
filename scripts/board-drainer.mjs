@@ -85,8 +85,26 @@ async function readBoard(secret) {
   return res.json()
 }
 
+// One-shot retry on a TRANSPORT error (fetch() throwing, e.g. `TypeError: fetch failed`) — NOT on an
+// HTTP status (those are handled by !res.ok below and are real server rejections, never retried).
+// Root cause (incident board-drainer-upsert-fetch-failed, 2026-08-19): readBoard() opens an undici
+// keep-alive socket, then dispatchAgent()'s execFileSync blocks the event loop 6-8 min; the edge
+// closes the idle socket but undici cannot reap it while the loop is blocked, so the first POST reuses
+// a dead socket and throws. The retry gets a fresh connection (the dead socket is evicted once its
+// error handler finally runs). Safe: upsert_incident is idempotent (keyed by source+key) and a
+// transport throw means the server never received the request — a retry cannot double-write.
+async function fetchWithTransportRetry(url, init) {
+  try {
+    return await fetch(url, init)
+  } catch (e) {
+    log(`  transport error on write-back (${(e?.message || e).toString().split('\n')[0]}) — one-shot retry on a fresh connection`)
+    await new Promise((r) => setTimeout(r, 500))   // let undici evict the dead pooled socket first
+    return fetch(url, init)
+  }
+}
+
 async function upsertIncident(secret, payload) {
-  const res = await fetch(`${BO_BASE}/rest/v1/rpc/upsert_incident`, {
+  const res = await fetchWithTransportRetry(`${BO_BASE}/rest/v1/rpc/upsert_incident`, {
     method: 'POST',
     headers: {
       apikey: secret, Authorization: `Bearer ${secret}`,
