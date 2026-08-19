@@ -15,11 +15,14 @@
  *   4. Download the run's test-results artifact (results.json → the failing checks).
  *   5. Run agent-triage.mjs with AGENT_TRIAGE_ENABLED=1 + AGENT_TRIAGE_LOCAL=1 (subscription, no key).
  *   6. Record the handled run id + append to the runner log.
+ *   7. GUARD SWEEP: poll the scheduled guard workflows (GUARD_WORKFLOWS below — they emit console
+ *      output, not results.json, so agent-triage can't parse them). A failed guard run gets a
+ *      generic headless Claude triage on its run log; dedup per workflow+run id in state.json.
  *
  * Requires on the desktop: git, gh (authenticated), node, and `claude` logged in to the subscription.
  * Env knobs: LOCAL_TRIAGE_DRY_RUN=1 (pass a dry run through), LOCAL_TRIAGE_HOME / _REPO overrides.
  */
-import { execSync } from 'child_process'
+import { execFileSync, execSync } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs'
 import { join } from 'path'
 
@@ -49,10 +52,19 @@ function log(msg) {
 function loadState() { try { return JSON.parse(readFileSync(STATE, 'utf-8')) } catch { return {} } }
 function saveState(s) { try { writeFileSync(STATE, JSON.stringify(s, null, 2)) } catch { /* noop */ } }
 
-function main() {
-  if (!existsSync(BASE)) mkdirSync(BASE, { recursive: true })
-  const state = loadState()
+// Pristine clone of THIS repo (isolated from Roger's own working copy), refreshed to origin/master.
+function refreshClone() {
+  if (!existsSync(join(WORKDIR, '.git'))) {
+    log('cloning repo (first run)...')
+    sh(`gh repo clone ${REPO} "${WORKDIR}"`, { timeout: 120_000 })
+  }
+  sh(`git fetch origin ${BRANCH}`, { cwd: WORKDIR })
+  sh(`git checkout ${BRANCH}`, { cwd: WORKDIR })
+  sh(`git reset --hard origin/${BRANCH}`, { cwd: WORKDIR })
+  sh(`git clean -fd`, { cwd: WORKDIR })
+}
 
+function triageMonitor(state) {
   // 1. pick the run to triage. LOCAL_TRIAGE_FORCE_RUN=<id> overrides the poll (manual re-triage /
   //    testing) and bypasses the green + dedup checks.
   const forceRunId = process.env.LOCAL_TRIAGE_FORCE_RUN
@@ -74,16 +86,9 @@ function main() {
 
   log(`monitor run #${run.databaseId} FAILED — triaging locally on the subscription${DRY ? ' [DRY RUN]' : ''}...`)
 
-  // 3. pristine clone (isolated from Roger's own working copy)
+  // 3. pristine clone
   try {
-    if (!existsSync(join(WORKDIR, '.git'))) {
-      log('cloning repo (first run)...')
-      sh(`gh repo clone ${REPO} "${WORKDIR}"`, { timeout: 120_000 })
-    }
-    sh(`git fetch origin ${BRANCH}`, { cwd: WORKDIR })
-    sh(`git checkout ${BRANCH}`, { cwd: WORKDIR })
-    sh(`git reset --hard origin/${BRANCH}`, { cwd: WORKDIR })
-    sh(`git clean -fd`, { cwd: WORKDIR })
+    refreshClone()
   } catch (e) { log(`repo refresh failed: ${e.message.split('\n')[0]}`); process.exit(1) }
 
   // 4. download the run's test-results (extracts test-results/results.json into WORKDIR)
@@ -104,6 +109,88 @@ function main() {
   state.lastHandledAt = new Date().toISOString()
   saveState(state)
   log(`done with run #${run.databaseId}`)
+}
+
+// ── Guard-workflow sweep ─────────────────────────────────────────────────────────
+// The scheduled GUARD workflows in this repo (a red run IS the alert) emit console output, not
+// the Playwright results.json agent-triage.mjs parses — so the monitor path above can't see them.
+// Scope gap found 2026-08-19: rls-grants-check + gate-coverage-check ran red >48h while this
+// runner (monitor.yml-only poll) reported all-green. For each failed guard run, dispatch a
+// generic headless Claude (subscription, no API cost) on the run log. LOCAL_GUARD_TRIAGE=0 disables.
+const GUARD_WORKFLOWS = [
+  'rls-grants-check.yml',
+  'gate-coverage-check.yml',
+  'auth-email-config-check.yml',
+  'drift-check.yml',
+  'cron-heartbeat.yml',
+]
+
+const GUARD_POLICY = `You are the guard-run triage agent for the production-monitor repo (${REPO}, branch ${BRANCH}). One of its scheduled GUARD workflows just went red. A red guard run IS the alert: either the guard found something real in the fleet, or the guard itself is broken.
+
+Policy:
+- Read the failing run's logs first: gh run view <runId> --repo ${REPO} --log. Identify the exact failing project/check.
+- If the root cause is a bug in the guard script/workflow/test in THIS repo: fix it minimally (match repo style), run the repo's tests (test/*.test.mjs) when relevant, commit + push to ${BRANCH}. You may re-run the guard via \`gh workflow run <workflow-file> --repo ${REPO}\` to verify green.
+- If the red is a REAL finding in a fleet product (RLS grant drift, broken v11 gates, config drift): do NOT weaken or silence the guard to make it pass. Report the finding precisely in the verdict. Product-side fixes are PRs on the target repo only.
+- NEVER push to any repo other than THIS one; NEVER pr merge / run cancel / delete.
+- Bound your work; do not loop.
+
+FINAL ACTION (required): use the Write tool to write guard-triage-verdict.json in the repo root as JSON:
+{"verdicts":[{"workflow":"","runId":"","class":"GUARD-BUG|REAL-FINDING|FLAKY|UNKNOWN","diagnosis":"1-3 sentences","action":"commit sha / PR url / escalation","escalate":true|false}]}`
+
+function triageOneGuard(state, wf, run) {
+  log(`guard ${wf} run #${run.databaseId} FAILED — triaging locally on the subscription${DRY ? ' [DRY RUN]' : ''}...`)
+  try { refreshClone() } catch (e) { log(`repo refresh failed: ${e.message.split('\n')[0]}`); return }
+  const prompt = [
+    `Guard workflow "${wf}" run #${run.databaseId} in ${REPO} FAILED (scheduled guard, red).`,
+    `Start by reading its logs: gh run view ${run.databaseId} --repo ${REPO} --log`,
+    `Then triage per policy and write guard-triage-verdict.json.`,
+  ].join('\n')
+  const allowedTools = [
+    'Read', 'Grep', 'Glob', 'Write',
+    'Bash(gh api:*)', 'Bash(gh run view:*)', 'Bash(gh run list:*)', 'Bash(gh workflow run:*)', 'Bash(gh pr create:*)', 'Bash(gh repo clone:*)',
+    'Bash(curl:*)', 'Bash(cat:*)', 'Bash(ls:*)', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)',
+    ...(DRY ? [] : ['Edit', 'Bash(git:*)', 'Bash(node:*)']),
+  ].join(',')
+  const policy = DRY
+    ? GUARD_POLICY + '\n\n⚠️ DRY RUN: investigate read-only; write ONLY guard-triage-verdict.json; describe what you WOULD do as "[DRY-RUN would] ...".'
+    : GUARD_POLICY
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'Agent Triage', GIT_AUTHOR_EMAIL: 'noreply@predivo.ch', GIT_COMMITTER_NAME: 'Agent Triage', GIT_COMMITTER_EMAIL: 'noreply@predivo.ch' }
+  delete env.ANTHROPIC_API_KEY // force the LOCAL subscription CLI, never a metered key
+  try {
+    // execFileSync with an args ARRAY (no shell) — see agent-triage.mjs for why (Windows quoting).
+    execFileSync(process.platform === 'win32' ? 'claude.exe' : 'claude', [
+      '-p', prompt,
+      '--append-system-prompt', policy,
+      '--allowedTools', allowedTools,
+      '--max-turns', '40',
+      '--model', 'claude-opus-4-8',
+      '--output-format', 'json',
+    ], { stdio: ['ignore', 'inherit', 'inherit'], timeout: 10 * 60_000, maxBuffer: 64 * 1024 * 1024, cwd: WORKDIR, env })
+  } catch (e) { log(`guard-triage agent errored/timed out: ${e.message.split('\n')[0]}`) }
+  if (!state.handledGuards) state.handledGuards = {}
+  state.handledGuards[wf] = run.databaseId
+  saveState(state)
+  log(`done with guard ${wf} run #${run.databaseId}`)
+}
+
+function triageGuards(state) {
+  if (process.env.LOCAL_GUARD_TRIAGE === '0') return
+  for (const wf of GUARD_WORKFLOWS) {
+    let run
+    try {
+      run = JSON.parse(sh(`gh run list --repo ${REPO} --workflow=${wf} --limit 1 --json databaseId,status,conclusion`))[0]
+    } catch (e) { log(`[guard ${wf}] run list failed: ${e.message.split('\n')[0]}`); continue }
+    if (!run || run.status !== 'completed' || run.conclusion !== 'failure') continue
+    if (state.handledGuards?.[wf] === run.databaseId) { log(`[guard ${wf}] run #${run.databaseId} already triaged — skip`); continue }
+    triageOneGuard(state, wf, run)
+  }
+}
+
+function main() {
+  if (!existsSync(BASE)) mkdirSync(BASE, { recursive: true })
+  const state = loadState()
+  triageMonitor(state)
+  triageGuards(state)
 }
 
 // Heartbeat (2026-08-10 reliability plan): success ping / fail signal to healthchecks.io.

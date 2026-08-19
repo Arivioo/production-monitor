@@ -53,13 +53,16 @@ function isEnrolled({ repo, dir }) {
   } catch { return false } // 404 -> not enrolled
 }
 
-// Latest staging-gates run conclusion via gh api (needs a token). Returns 'success' |
+// Latest COMPLETED staging-gates run conclusion via gh api (needs a token). Returns 'success' |
 // 'failure' | 'none' (enrolled but never ran) | 'unknown' (no token to check).
+// status=completed: this guard runs Mon 06:40 UTC, right while the gates' own Mon 06:30 cron is
+// mid-flight (conclusion null) — judging an in-progress run as 'none' false-positive FAILs
+// (BackOffice + ReplyFlow, 2026-08-17). An in-flight run is not a verdict; judge the last FINISHED one.
 function latestRunConclusion({ repo }) {
   if (!hasToken) return 'unknown'
   try {
     const out = execSync(
-      `gh api "repos/${repo}/actions/workflows/${WORKFLOW}/runs?per_page=1" --jq ".workflow_runs[0].conclusion // \\"none\\""`,
+      `gh api "repos/${repo}/actions/workflows/${WORKFLOW}/runs?per_page=1&status=completed" --jq ".workflow_runs[0].conclusion // \\"none\\""`,
       { stdio: 'pipe' },
     ).toString().trim()
     return out || 'none'
