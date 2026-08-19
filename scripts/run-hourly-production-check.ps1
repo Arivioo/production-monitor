@@ -9,6 +9,12 @@ $log     = Join-Path $scripts 'logs\hourly-production-check.log'
 $prompt  = Join-Path $scripts 'hourly-production-check-prompt.md'
 $claude  = 'C:\Users\roger_rwjnmnz\.local\bin\claude.exe'
 
+# Platform preflight (2026-08-19): shared claude-auth check. If the claude platform is down
+# (OAuth expired etc.), skip this run WITHOUT pinging this job's own check /fail - one platform
+# outage = one red claude-platform check, not N red jobs. See AUTOMATIONS_RUNBOOK.md.
+cmd /c "$scripts\_claude-preflight.cmd" 2>&1 | Add-Content $log
+if ($LASTEXITCODE -eq 75) { Add-Content $log "[$(Get-Date -Format s)] PREFLIGHT platform-down - skipping run (platform alert already sent)"; exit 75 }
+
 # Lockfile: skip this tick if a previous run (e.g. a long fix) is still going.
 if (Test-Path $lock) {
     $age = (Get-Date) - (Get-Item $lock).LastWriteTime
