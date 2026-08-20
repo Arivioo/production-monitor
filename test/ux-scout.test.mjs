@@ -7,7 +7,7 @@
  * Run: node test/ux-scout.test.mjs   (exit 0 = all pass)
  */
 import assert from 'node:assert'
-import { resolveProdRef, classify, dismissKey, buildDigest, verdict, escapeLiteral } from '../scripts/ux-scout.mjs'
+import { resolveProdRef, classify, dismissKey, buildDigest, verdict, escapeLiteral, SOURCES_FOR_TEST } from '../scripts/ux-scout.mjs'
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log(`  ok - ${name}`) }
@@ -192,11 +192,24 @@ t('an unreadable source is counted in the coverage line, not hidden', () => {
   assert.match(d, /1 UNREADABLE/)
 })
 
-t('products with no signal table are named as NOT watched every week', () => {
+t('coverage is stated even when nothing is skipped', () => {
+  // The NOT_COVERED list is empty since 2026-08-20 (every product with edge functions was
+  // instrumented rather than excused). The digest must still SAY so; going quiet about
+  // coverage is how a silent cap creeps back in.
   const d = buildDigest([{ product: 'replyflow', table: 'error_log', ref: 'x', authenticated: [], anonymous: [], skipped: [] }], 7)
-  assert.match(d, /NOT watched/)
-  assert.match(d, /scoutcopilot/)
-  assert.match(d, /backoffice/)
+  assert.match(d, /NOT watched|Nothing is skipped/)
+})
+
+t('backoffice is WATCHED, not excluded as an internal tool', () => {
+  // Regression guard. It was excluded in the first build on the reasoning "its only user is
+  // Roger", which hid 21 live Smartlead "Plan expired!" 401s. There is always a user.
+  assert.ok(SOURCES_FOR_TEST.some((x) => x.product === 'backoffice'))
+})
+
+t('every product with a failure table is watched, none silently dropped', () => {
+  const want = ['replyflow', 'channelmover', 'signalscore', 'arivioo', 'valrano', 'backoffice',
+                'scoutcopilot', 'distribution-os', 'launchready']
+  for (const p of want) assert.ok(SOURCES_FOR_TEST.some((x) => x.product === p), `${p} must be watched`)
 })
 
 console.log(`\n${n} tests passed`)

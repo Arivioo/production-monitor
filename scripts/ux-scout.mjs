@@ -58,7 +58,7 @@ const WINDOW_DAYS = Number(process.env.UX_SCOUT_WINDOW_DAYS || 7)
  * (2026-08-20). Where the helper still double-encodes, every row reads as anonymous, which
  * is why `contextFixed` is tracked explicitly rather than assumed.
  */
-const SOURCES = [
+export const SOURCES_FOR_TEST = [
   {
     product: 'replyflow',
     repo: 'replyflow',
@@ -118,6 +118,52 @@ const SOURCES = [
     contextFixed: false,
     sql: (days) => ERROR_LOG_SQL(days),
   },
+  {
+    // BackOffice. Excluded from the first build on the reasoning "internal admin tool, its
+    // only user is Roger". That reasoning was WRONG and Roger called it: there IS a user, and
+    // when it breaks he is the one it breaks for. Checked 2026-08-20: error_log holds 22 rows,
+    // 21 of them the Smartlead "Plan expired!" 401 still firing that morning, i.e. excluding
+    // BackOffice actively hid a recurring failure that was already an open item.
+    product: 'backoffice',
+    repo: 'BackOffice',
+    table: 'error_log',
+    contextFixed: false, // committed 39b4f2f, NOT deployed (BO CI does not ship edge functions)
+    // BackOffice CI does not deploy edge functions (.github/workflows/deploy.yml:226), so its
+    // deploy.yml carries no --project-ref for resolveProdRef() to find. The ref therefore comes
+    // from the next-best source of truth, named here so it is auditable rather than magic.
+    ref: { value: 'xoecpzfsskalvjrtcbbl', because: 'docs/Credentials.txt:12 "Production URL: https://backoffice.predivo.ch" + :18 "Project ID"' },
+    sql: (days) => ERROR_LOG_SQL(days),
+  },
+  {
+    // Instrumented 2026-08-20. Had 16 edge functions and NO failure table at all, so every
+    // caught error went to console.error and vanished. 9 auth users at the time.
+    product: 'scoutcopilot',
+    repo: 'ScoutCopilot',
+    table: 'error_log',
+    contextFixed: true, // helper written correct from the start (ca771ce)
+    ref: { value: 'rlcsuqwqzoqjykdiqjye', because: 'docs/Credentials.txt:12 "Production URL: https://scoutcopilot.com" + :18 "Project ID"; CI does not deploy edge functions so deploy.yml has no --project-ref' },
+    sql: (days) => ERROR_LOG_SQL(days),
+  },
+  {
+    // Instrumented 2026-08-20. 6 edge functions, no failure table. 5 auth users.
+    // Its stripe-checkout and stripe-portal catches returned a generic message and threw the
+    // real cause away entirely, so payment failures were unknowable. Now logged.
+    product: 'distribution-os',
+    repo: 'Distribution-OS',
+    table: 'error_log',
+    contextFixed: true, // ae75c94
+    ref: { value: 'jxjpbmkgmuunpayqgbsx', because: 'docs/Credentials.txt:12 "Production URL" + :18 "Project ID"; CI does not deploy edge functions' },
+    sql: (days) => ERROR_LOG_SQL(days),
+  },
+  {
+    // Instrumented 2026-08-20. 2 edge functions, no failure table. 3 auth users.
+    product: 'launchready',
+    repo: 'launchready',
+    table: 'error_log',
+    contextFixed: true, // 8c13443
+    ref: { value: 'hcfeoescybfngjsphekq', because: 'docs/Credentials.txt:12 "Production URL" + :18 "Project ID"; CI does not deploy edge functions' },
+    sql: (days) => ERROR_LOG_SQL(days),
+  },
 ]
 
 /**
@@ -126,10 +172,11 @@ const SOURCES = [
  * than no scout: it manufactures false confidence.
  */
 const NOT_COVERED = [
-  ['backoffice', 'internal admin tool, its only user is Roger; product-user friction is not a thing here'],
-  ['scoutcopilot', 'no error-log helper in the repo, so there is no failure table to read'],
-  ['launchready', 'no error-log helper in the repo'],
-  ['distribution-os', 'no error-log helper in the repo'],
+  // Empty on 2026-08-20. It used to hold scoutcopilot, launchready and distribution-os with
+  // the reason "no error-log helper in the repo". Roger's answer to that was the right one:
+  // then build one. All three were instrumented rather than excused. Keep this list and the
+  // digest line even while it is empty, because the honest thing is to say out loud that
+  // nothing is being skipped, not to go quiet about coverage.
 ]
 
 
@@ -351,10 +398,10 @@ async function measurePass(boSecret) {
 
   const results = []
   for (const rep of due) {
-    const src = SOURCES.find((s) => s.product === rep.product)
+    const src = SOURCES_FOR_TEST.find((s) => s.product === rep.product)
     if (!src) continue
     try {
-      const ref = prodRefFor(src.repo)
+      const ref = src.ref ? src.ref.value : prodRefFor(src.repo)
       const pat = readMgmtPat(src.repo)
       // Count the SAME pattern only since the fix was marked.
       const since = rep.state_changed_at || rep.measure_after
@@ -435,8 +482,12 @@ export function buildDigest(findings, windowDays, measured = []) {
     }
     L.push('')
   }
-  L.push('NOT watched (stated every week on purpose, so "fleet-wide" never overstates coverage):')
-  for (const [p, why] of NOT_COVERED) L.push(`  ${p}: ${why}`)
+  if (NOT_COVERED.length) {
+    L.push('NOT watched (stated every week on purpose, so "fleet-wide" never overstates coverage):')
+    for (const [p, why] of NOT_COVERED) L.push(`  ${p}: ${why}`)
+  } else {
+    L.push('Every product that ships edge functions has a failure table and is watched. Nothing is skipped.')
+  }
   L.push('')
   L.push('Reports are free. Nothing here paged anyone, opened a PR, or changed code.')
   return L.join('\n')
@@ -471,10 +522,10 @@ async function main() {
   }
 
   const findings = []
-  for (const src of SOURCES) {
+  for (const src of SOURCES_FOR_TEST) {
     const f = { product: src.product, table: src.table, contextFixed: src.contextFixed, authenticated: [], anonymous: [], skipped: [] }
     try {
-      f.ref = prodRefFor(src.repo)
+      f.ref = src.ref ? src.ref.value : prodRefFor(src.repo)
       const pat = readMgmtPat(src.repo)
       const rows = await runSql(f.ref, pat, src.sql(WINDOW_DAYS).replace(/\s+/g, ' ').trim())
       Object.assign(f, classify(rows, { dismissed, product: src.product }))
