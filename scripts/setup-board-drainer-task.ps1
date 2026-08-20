@@ -40,8 +40,15 @@ $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At $start `
     -RepetitionInterval (New-TimeSpan -Minutes 20) `
     -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
 
+# Battery gates MUST be off (AUTOMATIONS_RUNBOOK.md birth-certificate item 5). These were
+# MISSING: audited 2026-08-20, this task had DisallowStartIfOnBatteries=True and
+# StopIfGoingOnBatteries=True while its three sibling runners (AgentTriage, DeployTriage,
+# Needs-Roger Closer) all had them False. New-ScheduledTaskSettingsSet defaults them to True,
+# which is exactly how the brain tasks silently skipped for days on 2026-08-10. A drainer that
+# skips looks identical to a clean board.
 $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable `
-    -DontStopOnIdleEnd -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
+    -DontStopOnIdleEnd -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
