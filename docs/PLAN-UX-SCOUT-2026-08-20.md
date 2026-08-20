@@ -201,7 +201,7 @@ Roger approved the plan and said to develop through as far as possible without s
 | 3 Triage teaches it | **BUILT, loop proven end to end** | `scripts/scout-triage.mjs`. Marked one report not-real with a reason; the next scout run logged "1 previously-judged pattern(s) will not be re-surfaced" and "1 skipped". |
 | 1c Coverage | **BUILT** `924ae73`, 5 sources + explicit not-covered list |
 | 5a Measured | **BUILT** | `verdict()` + `measurePass()` run on every weekly tick; `scout-triage.mjs mark <id> fixed` arms the 7-day re-check. 7 tests. |
-| 4 Autonomy | **NOT BUILT, on purpose** | This is where a robot changes product code from a UX signal. Needs its own yes. |
+| 4 Autonomy | **BUILT** `e9c8e44` | Roger chose "staging, then stop" + a severity threshold. Boundary UNCHANGED. |
 | 5b Cockpit page | **NOT BUILT** | Blocked on the `factory` workstream lock. |
 
 ## Birth certificate (AUTOMATIONS_RUNBOOK.md, all five)
@@ -297,3 +297,46 @@ generate-reply  "Missing reviewId"
 ## Process note
 
 `c200c3c` was staged with `git add -A` in a repo another session was working in, and swept in an unrelated in-progress change to `lib/edgeFunctions.ts`. Not reverted (the content is valid and reverting would destroy that session's work); recorded in `41ed654`. Stage explicit paths in a repo under a shared workstream lock.
+
+
+---
+
+# PHASE 4, built 2026-08-20 (Roger's two decisions)
+
+Asked as two concrete choices rather than a vague "needs your yes". Roger picked:
+
+**Autonomy: "staging, then stop."** A scout report he marks `real` becomes eligible for the same fix agent, through the SAME classifier and the SAME boundary the drainer already has for product code. It writes the fix, deploys to STAGING, and escalates the prod promotion. **Nothing widened, and no new risk class exists.** The alternatives (draft-only PRs, or full prod autonomy for copy-only fixes) were both declined.
+
+**Threshold: a severity dial**, replacing `MAX_PER_RUN = 3`, a hardcoded number whose reasoning nobody could reconstruct:
+
+```
+BOARD_DRAINER_THRESHOLD = critical | warning (default) | info
+```
+
+Items below the bar are still classified and logged every run, just not dispatched, so lowering the dial can never silently lose work. An unknown or absent severity goes **above** the bar, never below: a row we cannot grade is a row we must not skip. `MAX_PER_RUN` survives as a hard blast-radius ceiling.
+
+## How a report becomes a fix
+
+```
+scout files a report        (free, never pages)
+   -> Roger marks it `real` with a reason      <- THE GATE
+   -> board-drainer picks it up, same classifier as every incident
+   -> destructive / secrets / payments / OAuth / prod-promotion -> ESCALATE
+   -> otherwise: fix, commit, deploy STAGING, stop
+   -> report marked `fixed`, `worked_at` set, `measure_after` armed
+   -> 7 days later the scout re-checks that exact signal
+      -> gone | reduced | unchanged | worse
+```
+
+Reports still live in `scout_reports` and never become incidents. `scoutReportToIncident()` only shapes one for the existing agent path. Severity is derived, never invented: hit a signed-in user gives `warning`, anonymous but human-approved gives `info`, never `critical`, because a UX finding is by definition not an outage.
+
+## Proven live, then cleaned up
+
+A labelled self-test row, dry-run only, deleted afterwards:
+
+- a copy-only report routed to `[claude/FIX]`
+- the **same** report escalated to `[roger/VERIFY]` the moment its text contained the word "delete", because the classifier reads the narrative too
+
+That second result is worth keeping in mind: **an LLM-written narrative can trip a safety guard, and when it does the result is escalation, never a wider action.** Fail-safe in the right direction.
+
+10 new tests, including a regression guard asserting an OAuth-class scout report still hard-escalates exactly as it did before Phase 4 existed.
