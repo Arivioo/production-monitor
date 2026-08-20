@@ -377,3 +377,53 @@ Tests: **29 board-drainer assertions + 26 ux-scout.** Writing them caught a bug 
 ## Board hygiene note
 
 Closing these, I upserted under `source='production-monitor'` when the real rows were `source='silent-failure'`, creating two duplicates. **The upsert key is `(source, key)`: read a row's actual source before closing it.** Duplicates deleted, real rows closed.
+
+
+---
+
+# ROUND 3: closing the CLASS, after Roger asked why it was safe to close
+
+I had said the session was safe to close. Roger pushed back: why, when you just found more work. He was right. I had fixed the config.toml landmine in three repos **because I happened to deploy to them**, and never checked the other six.
+
+## The fleet audit (all 9 products, live Management API vs each repo's config.toml)
+
+| repo | fns | live-false | AT RISK |
+|---|---|---|---|
+| replyflow | 42 | 41 | 0 |
+| **ChannelMover** | 32 | 32 | **32** |
+| signalscore | 16 | 3 | 0 |
+| Valrano | 41 | 41 | 0 (fixed earlier today) |
+| **BackOffice** | 53 | 33 | **3** |
+| arivioo | 57 | 45 | 0 |
+| ScoutCopilot | 16 | 16 | 0 |
+| Distribution-OS | 6 | 2 | 0 (fixed earlier today) |
+| launchready | 2 | 1 | 0 |
+| | | **TOTAL** | **35** |
+
+A fourth instance, and the second-worst. **ChannelMover: 32 functions, zero declared.**
+
+## Why it was worse than a manual-deploy hazard
+
+ChannelMover's CI escaped only because both deploy steps pass `--no-verify-jwt` (`deploy.yml:208`, `:647`). But `prod-deploy-guard.mjs:160` runs
+
+```
+supabase functions deploy <fn> --project-ref <ref> --use-api
+```
+
+with **no** `--no-verify-jwt`, and `board-drainer.mjs:274` hands that script to **autonomous fix agents**. So an agent deploying one ChannelMover function to prod would have flipped it to `true` and 401'd it. An agent must never break a product as a side effect of an unrelated fix.
+
+## The fix, in two halves
+
+**Instances** (`d3d08b3` ChannelMover, `6fcfcc8` BackOffice): all 35 declared, read verbatim from live. Re-audit: **35 -> 0 fleet-wide.**
+
+**The class** (`ac475be`): `prod-deploy-guard.mjs` now REFUSES to deploy any function whose live `verify_jwt` is not declared in its repo's `config.toml`, printing the exact line to add. It **fails closed** on an unreadable live state, a missing token, an undeclared value, or a config-vs-live disagreement. An undeclared value is refused even when the default would happen to match, because that means the repo is not the source of truth.
+
+Placed deliberately **before** the dry-run early return, so `--dry-run` actually exercises it. A dry-run that short-circuits before a check cannot validate that check, which is precisely how the `scout-ux` constraint bug shipped earlier the same day. 8 tests.
+
+## One more of my own, found the same way
+
+`commit-review-prompt.md:68` still seeded every finding as `"p_who_must_act": "Roger"`. Commit `6dfb826` had fixed the board-drainer **consumer** half of that defect and left the **producer** untouched, so findings were still being BORN wrongly owned (4 such rows created at 09:5xZ had to be hand-corrected). Now defaults to Claude, with Roger named only for hands-only work, and the reasoning written into the file so it is not re-broken. Secondary drift fixed too: the file documented `p_source: "commit-review"`, a value the CHECK rejects outright.
+
+## The lesson worth keeping
+
+**Fixing three instances is not fixing a class.** Both times today I fixed what I tripped over and called it done; both times an audit of the whole fleet found more. The durable form of the fix is the one that makes the next instance impossible, not the one that clears the current list.
