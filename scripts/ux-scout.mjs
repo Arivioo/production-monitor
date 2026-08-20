@@ -332,13 +332,31 @@ export function classify(rows, { dismissed = new Set(), product = '' } = {}) {
   const authenticated = []
   const anonymous = []
   const skipped = []
+  const reopened = []
   for (const r of rows) {
     const key = dismissKey({ product, ...r })
-    if (dismissed.has(key)) { skipped.push(r); continue }
+    if (dismissed.has(key)) {
+      // A dismissal is NOT unconditional, and this is the difference between a filter and
+      // a blind spot.
+      //
+      // Nearly every dismissal is "unauthenticated probe, has_auth=false on every
+      // occurrence". That judgement is only true while the pattern STAYS anonymous. The day
+      // the same message starts hitting a signed-in user it is no longer a probe, it is the
+      // exact user pain this tool exists to find, and silently skipping it would be the
+      // worst possible failure: a filter that hides the thing it was built to surface.
+      //
+      // So: honour the dismissal only while the pattern is still anonymous. If it comes back
+      // AUTHENTICATED, re-surface it and say plainly that it was previously dismissed, so the
+      // judgement gets revisited against the new evidence rather than inherited.
+      if (!r.authenticated) { skipped.push(r); continue }
+      reopened.push(r)
+      authenticated.push({ ...r, reopenedFromDismissal: true })
+      continue
+    }
     if (r.authenticated) authenticated.push(r)
     else anonymous.push(r)
   }
-  return { authenticated, anonymous, skipped }
+  return { authenticated, anonymous, skipped, reopened }
 }
 
 // ── narration (the ONLY model call; skipped entirely when nothing is authenticated) ──
@@ -472,7 +490,8 @@ export function buildDigest(findings, windowDays, measured = []) {
       L.push('  no authenticated failures')
     }
     for (const r of f.authenticated) {
-      L.push(`  [USER] ${r.function_name}/${r.operation}: ${r.message_pattern}`)
+      L.push(`  ${r.reopenedFromDismissal ? '[USER, REOPENED]' : '[USER]'} ${r.function_name}/${r.operation}: ${r.message_pattern}`)
+      if (r.reopenedFromDismissal) L.push('         PREVIOUSLY DISMISSED as anonymous, but it has now hit a signed-in user. The old judgement no longer holds; judge it again on this evidence.')
       L.push(`         ${r.occurrences}x, ${r.distinct_users} distinct user(s), last ${r.last_seen}`)
       if (r.narrative) L.push(`         ${r.narrative}`)
       L.push(`         evidence: ${JSON.stringify(r.sample_evidence)}`)

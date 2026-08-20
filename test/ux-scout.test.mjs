@@ -94,8 +94,11 @@ t('volume never promotes a probe over a single real user', () => {
   assert.equal(c.authenticated[0].message_pattern, 'Review not found')
 })
 
-t('a pattern a human already judged is never re-surfaced', () => {
-  const r = row({ authenticated: true })
+t('a pattern a human already judged is not re-surfaced WHILE IT STAYS ANONYMOUS', () => {
+  // Was written as "never re-surfaced" and used an authenticated row. That encoded a real
+  // flaw, corrected 2026-08-20: dismissals are almost always "unauthenticated probe", a
+  // judgement that only holds while the pattern remains anonymous. See the reopen tests below.
+  const r = row({ authenticated: false })
   const dismissed = new Set([dismissKey({ product: 'replyflow', ...r })])
   const c = classify([r], { dismissed, product: 'replyflow' })
   assert.equal(c.authenticated.length, 0)
@@ -210,6 +213,36 @@ t('every product with a failure table is watched, none silently dropped', () => 
   const want = ['replyflow', 'channelmover', 'signalscore', 'arivioo', 'valrano', 'backoffice',
                 'scoutcopilot', 'distribution-os', 'launchready']
   for (const p of want) assert.ok(SOURCES_FOR_TEST.some((x) => x.product === p), `${p} must be watched`)
+})
+
+// -- a dismissal must not become a blind spot -------------------------------------
+// Almost every dismissal reads "unauthenticated probe, has_auth=false on every occurrence".
+// That is only true while the pattern STAYS anonymous. If it later hits a signed-in user it
+// is no longer a probe, it is exactly the user pain this tool exists to find.
+
+t('a dismissed pattern that is STILL anonymous stays skipped', () => {
+  const r = row({ authenticated: false })
+  const c = classify([r], { dismissed: new Set([dismissKey({ product: 'replyflow', ...r })]), product: 'replyflow' })
+  assert.equal(c.skipped.length, 1)
+  assert.equal(c.authenticated.length, 0)
+})
+
+t('a dismissed pattern that now hits a REAL USER is REOPENED, not skipped', () => {
+  const r = row({ authenticated: true, distinct_users: 2 })
+  const c = classify([r], { dismissed: new Set([dismissKey({ product: 'replyflow', ...r })]), product: 'replyflow' })
+  assert.equal(c.skipped.length, 0, 'must not be silently skipped')
+  assert.equal(c.reopened.length, 1)
+  assert.equal(c.authenticated[0].reopenedFromDismissal, true)
+})
+
+t('a reopened finding is LABELLED so the old judgement is not inherited', () => {
+  const d = buildDigest([{
+    product: 'replyflow', table: 'error_log', ref: 'x', contextFixed: true,
+    authenticated: [row({ authenticated: true, distinct_users: 2, reopenedFromDismissal: true })],
+    anonymous: [], skipped: [],
+  }], 7)
+  assert.match(d, /REOPENED/)
+  assert.match(d, /PREVIOUSLY DISMISSED as anonymous/)
 })
 
 console.log(`\n${n} tests passed`)
