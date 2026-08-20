@@ -478,3 +478,20 @@ verified gone on prod in his browser.
   data. Roger may revisit it in the UI (Reopen).
 - Staging cockpit reads the STAGING BackOffice DB, so `/monitoring/scout` on staging shows
   the empty state; the scout only writes to prod.
+
+
+---
+
+# PHASE 5b DONE: the tier is complete
+
+The Cockpit page shipped to production on 2026-08-20 (Cockpit `e3d427f`, plus `d52bdb1` fixing a 1px SectionNav overflow that rendered a scrollbar app-wide). Live at **https://cockpit.predivo.ch/monitoring/scout**.
+
+It reads `scout_reports` directly under the table's existing RLS, so **no `sql/` or `mcp/` change was needed** and the workstream-lock conflict that blocked it never had to be resolved. It cannot write `monitoring_incidents`, by design.
+
+**Verified independently rather than accepted on report** (13:33Z): 24 rows / 22 new / 2 not-real / 0 authenticated on prod, both commits on `origin/main`, both trees clean, page returns HTTP 200, and critically the round trip closes: a not-real judgement entered **through the production UI** makes `ux-scout.mjs` log `2 previously-judged pattern(s) will not be re-surfaced`. The human decision reaches the machine. That was the acceptance test for the whole tier, and it passes.
+
+## The one thing worth carrying forward
+
+The Monitoring Board turned over to three fresh parked items, and they are **the same two defects already fixed elsewhere**: `always()` instead of `!cancelled()` (now BackOffice, Valrano and SignalScore) and blocked-routes-never-asserted (ReplyFlow, now SignalScore). The Gate A crawler is being ported product by product and reintroducing both at each port.
+
+That is the same failure this document already records twice about my own work: **fixing instances is not fixing a class.** The durable move is to correct the template the port copies from, so the next product cannot inherit the defect.
