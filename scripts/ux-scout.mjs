@@ -64,40 +64,14 @@ const SOURCES = [
     repo: 'replyflow',
     table: 'error_log',
     contextFixed: true,
-    sql: (days) => `
-      select function_name,
-             coalesce(operation, '') as operation,
-             ${NORMALISE('error_message')} as message_pattern,
-             count(*)::int as occurrences,
-             count(distinct context->>'user_id')::int as distinct_users,
-             bool_or(context->>'user_id' is not null) as authenticated,
-             min(created_at) as first_seen,
-             max(created_at) as last_seen,
-             (array_agg(context order by created_at desc))[1] as sample_evidence
-        from error_log
-       where created_at > now() - interval '${days} days'
-       group by 1,2,3
-       order by authenticated desc, occurrences desc`,
+    sql: (days) => ERROR_LOG_SQL(days),
   },
   {
     product: 'channelmover',
     repo: 'ChannelMover',
     table: 'error_log',
     contextFixed: false,
-    sql: (days) => `
-      select function_name,
-             coalesce(operation, '') as operation,
-             ${NORMALISE('error_message')} as message_pattern,
-             count(*)::int as occurrences,
-             count(distinct context->>'user_id')::int as distinct_users,
-             bool_or(context->>'user_id' is not null) as authenticated,
-             min(created_at) as first_seen,
-             max(created_at) as last_seen,
-             (array_agg(context order by created_at desc))[1] as sample_evidence
-        from error_log
-       where created_at > now() - interval '${days} days'
-       group by 1,2,3
-       order by authenticated desc, occurrences desc`,
+    sql: (days) => ERROR_LOG_SQL(days),
   },
   {
     // SignalScore's error_log is empty (0 rows, verified 2026-08-20) but api_request_logs
@@ -123,7 +97,59 @@ const SOURCES = [
        group by 1,2,3
        order by occurrences desc`,
   },
+  {
+    // arivioo: writes error_log but had 0 rows at 2026-08-20. Included anyway. A source
+    // that is empty today must still be WATCHED, otherwise the day it starts producing is
+    // the day nobody notices.
+    product: 'arivioo',
+    repo: 'arivioo',
+    table: 'error_log',
+    contextFixed: true, // commit 9be8b4b
+    sql: (days) => ERROR_LOG_SQL(days),
+  },
+  {
+    // Valrano: writes error_log, but its Management PAT returned "account does not have the
+    // necessary privileges" on 2026-08-20. Left IN the list on purpose so the digest reports
+    // it as READ FAILED every week. Dropping it would silently shrink coverage, which is the
+    // exact failure this tool is supposed to prevent.
+    product: 'valrano',
+    repo: 'Valrano',
+    table: 'error_log',
+    contextFixed: false,
+    sql: (days) => ERROR_LOG_SQL(days),
+  },
 ]
+
+/**
+ * Products NOT watched, stated out loud in every digest. A scout that reports "no
+ * authenticated failures fleet-wide" while silently covering a third of the fleet is worse
+ * than no scout: it manufactures false confidence.
+ */
+const NOT_COVERED = [
+  ['backoffice', 'internal admin tool, its only user is Roger; product-user friction is not a thing here'],
+  ['scoutcopilot', 'no error-log helper in the repo, so there is no failure table to read'],
+  ['launchready', 'no error-log helper in the repo'],
+  ['distribution-os', 'no error-log helper in the repo'],
+]
+
+
+/** The standard error_log rollup, shared by every product using the _shared/error-log.ts helper. */
+function ERROR_LOG_SQL(days) {
+  return `
+      select function_name,
+             coalesce(operation, '') as operation,
+             ${NORMALISE('error_message')} as message_pattern,
+             count(*)::int as occurrences,
+             count(distinct context->>'user_id')::int as distinct_users,
+             bool_or(context->>'user_id' is not null) as authenticated,
+             min(created_at) as first_seen,
+             max(created_at) as last_seen,
+             (array_agg(context order by created_at desc))[1] as sample_evidence
+        from error_log
+       where created_at > now() - interval '${days} days'
+       group by 1,2,3
+       order by authenticated desc, occurrences desc`
+}
 
 /**
  * Collapse the volatile parts of an error message so the same problem groups into one row
@@ -367,6 +393,7 @@ export function buildDigest(findings, windowDays, measured = []) {
   const L = []
   const realCount = findings.reduce((n, f) => n + f.authenticated.length, 0)
   L.push(`UX Scout, last ${windowDays} days.`)
+  L.push(`Coverage: ${findings.length} product(s) read` + (findings.some((f) => f.error) ? `, ${findings.filter((f) => f.error).length} UNREADABLE (see below)` : '') + '.')
   L.push('')
   if (realCount === 0) {
     L.push('No authenticated user hit a failure in any product. That is the correct answer, not a broken run.')
@@ -408,6 +435,9 @@ export function buildDigest(findings, windowDays, measured = []) {
     }
     L.push('')
   }
+  L.push('NOT watched (stated every week on purpose, so "fleet-wide" never overstates coverage):')
+  for (const [p, why] of NOT_COVERED) L.push(`  ${p}: ${why}`)
+  L.push('')
   L.push('Reports are free. Nothing here paged anyone, opened a PR, or changed code.')
   return L.join('\n')
 }

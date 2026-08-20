@@ -1,6 +1,6 @@
 # PLAN, UX Scout tier (2026-08-20)
 
-**Status:** proposed, awaiting Roger's go per phase. Nothing built.
+**Status:** Phases 0, 1, 2, 3 and the Measured half of 5 are BUILT AND LIVE (2026-08-20). Phase 4 (autonomy) is deliberately NOT built and needs a separate yes. Cockpit UI is blocked on the `factory` workstream lock.
 **Origin:** PostHog "self-driving" KB entry `hFra0uH2NRM`. Roger's steer: not buying it, learning from it.
 **Companion memory:** `session_ux_scout_tier_proposal_2026_08_20.md`
 **Sibling plan (same shape, already shipped):** `PLAN-BOARD-DRAINER-2026-08-15.md`
@@ -181,3 +181,42 @@ Phases 0 and 1 are the ones Roger approved on 2026-08-20. Everything from Phase 
 - **ReplyFlow `ad_funnel_events` has 0 rows.** Same shape.
 - **ChannelMover** declares `posthog-js ^1.400.1` with no `posthog.init` anywhere in `src/`. Dead dependency in the bundle.
 - **`POSTHOG_PERSONAL_API_KEY`** (`BackOffice/docs/Credentials.txt:123`, host `eu.posthog.com`) is alive but has no read scopes (403 `permission_denied`, not 401) and zero consumers in the codebase.
+
+
+---
+
+# BUILD LOG (2026-08-20)
+
+Roger approved the plan and said to develop through as far as possible without stopping for approvals unless genuinely needed.
+
+## Shipped
+
+| Phase | State | Evidence |
+|---|---|---|
+| 0 Evidence | **LIVE on staging, prod promotion dispatched** | ReplyFlow `3e353c6`. Staging proof by query: newest row `jsonb_typeof(context)='object'`, `context={"has_auth": false}`; the two rows from before the deploy still read `'string'` / `"{}"`. |
+| 0b jsonb fix ported | **pushed** | ChannelMover `5721994`, SignalScore `7049391`. Still present in BackOffice and arivioo. |
+| 1 The scout | **BUILT, first LIVE run done** | `scripts/ux-scout.mjs`, 21 unit tests green, 11 reports written to `scout_reports` on BackOffice prod. |
+| 1b Table | **LIVE both refs** | BackOffice migration 117, applied by hand to staging `vvgqkwiqauafcflshsec` and prod `xoecpzfsskalvjrtcbbl`. Verified: 21 columns, RLS on, 3 policies, RPC present. |
+| 2 Second shift | **REGISTERED, LIVE** | `UX-Scout-LocalRunner`, weekly Mon 07:20, next run 2026-08-24 07:20. Battery gates off, StartWhenAvailable on. |
+| 3 Triage teaches it | **BUILT, loop proven end to end** | `scripts/scout-triage.mjs`. Marked one report not-real with a reason; the next scout run logged "1 previously-judged pattern(s) will not be re-surfaced" and "1 skipped". |
+| 5a Measured | **BUILT** | `verdict()` + `measurePass()` run on every weekly tick; `scout-triage.mjs mark <id> fixed` arms the 7-day re-check. 7 tests. |
+| 4 Autonomy | **NOT BUILT, on purpose** | This is where a robot changes product code from a UX signal. Needs its own yes. |
+| 5b Cockpit page | **NOT BUILT** | Blocked on the `factory` workstream lock. |
+
+## Birth certificate (AUTOMATIONS_RUNBOOK.md, all five)
+
+1. Heartbeat: no healthchecks slot, free plan at its 20-check cap (same documented precedent as Factory Engine and Commit Review). Env `UX_SCOUT_HC` is wired for when a slot frees.
+2. Runbook row: added, overview count 13 to 14 tasks.
+3. Tracked repo: `production-monitor` is the monitor repo itself.
+4. Alarm PROVEN: a run was deliberately failed by pointing `UX_SCOUT_PROJECTS_ROOT` at a non-existent directory; the failure email sent and was confirmed to `rogmueller1976@gmail.com`.
+5. Task settings standard: `StartWhenAvailable=True`, both battery gates False.
+
+## Bug found and fixed on the way
+
+**Board-Drainer-LocalRunner had both battery gates ON.** Audited during the birth-certificate check: `DisallowStartIfOnBatteries=True`, `StopIfGoingOnBatteries=True`, while all three sibling runners (AgentTriage, DeployTriage, Needs-Roger Closer) had them False. `New-ScheduledTaskSettingsSet` defaults them to True, and this is exactly how the brain tasks silently skipped for days on 2026-08-10. A drainer that skips looks identical to a clean board. Fixed in `setup-board-drainer-task.ps1` and the task re-registered; both now False, still ENABLED and LIVE on the 20-minute repeat.
+
+## What the first live run actually found
+
+11 reports. **Zero authenticated user failures across the whole fleet**, which given roughly 39 users is the correct answer rather than a broken run. ReplyFlow's 1,345 anonymous occurrences over 14 days are the four probe patterns; SignalScore contributed one `firecrawl HTTP 502`. Nothing paged, nothing was emailed (a quiet week is silent by design).
+
+The honest read: the scout will find little until the fleet has users. Its value today is that the 339 `Missing reviewId` rows are now one query away from being provably bot traffic rather than a permanent unknown, and that the machinery is in place before it is needed rather than after.

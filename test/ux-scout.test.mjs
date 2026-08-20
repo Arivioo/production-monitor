@@ -173,4 +173,30 @@ t('an apostrophe in a pattern cannot break the measurement query', () => {
   assert.equal(escapeLiteral("user's session"), "'user''s session'")
 })
 
+// -- coverage honesty ------------------------------------------------------------
+// A scout that says "fleet-wide" while silently reading a third of the fleet manufactures
+// false confidence. Coverage and non-coverage must both be stated every single week.
+t('the digest states how many products were actually read', () => {
+  const d = buildDigest([
+    { product: 'replyflow', table: 'error_log', ref: 'x', authenticated: [], anonymous: [], skipped: [] },
+    { product: 'valrano', table: 'error_log', ref: 'y', authenticated: [], anonymous: [], skipped: [] },
+  ], 7)
+  assert.match(d, /Coverage: 2 product\(s\) read\./)
+})
+
+t('an unreadable source is counted in the coverage line, not hidden', () => {
+  const d = buildDigest([
+    { product: 'replyflow', table: 'error_log', ref: 'x', authenticated: [], anonymous: [], skipped: [] },
+    { product: 'valrano', table: 'error_log', ref: 'y', error: 'privileges', authenticated: [], anonymous: [], skipped: [] },
+  ], 7)
+  assert.match(d, /1 UNREADABLE/)
+})
+
+t('products with no signal table are named as NOT watched every week', () => {
+  const d = buildDigest([{ product: 'replyflow', table: 'error_log', ref: 'x', authenticated: [], anonymous: [], skipped: [] }], 7)
+  assert.match(d, /NOT watched/)
+  assert.match(d, /scoutcopilot/)
+  assert.match(d, /backoffice/)
+})
+
 console.log(`\n${n} tests passed`)
