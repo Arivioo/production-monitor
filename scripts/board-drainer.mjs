@@ -260,6 +260,13 @@ STEP 1 — DIAGNOSE from the live system, never from the incident text alone. Re
 
 STEP 2 — CLASSIFY and take ONLY the permitted action:
   A. MONITOR/SPEC/CI/CONFIG/PIPELINE fix (stale test assertion, broken CI step, missing committed file, stale threshold, gitignored-path crash, a recurring false-red = a monitor bug): FIX it in the owning repo, commit (message prefixed "[board-drainer] "), push, and DEPLOY IT (incl. production for these low-blast-radius classes). Verify green after.
+
+     HOW TO COMMIT (hard rule, added 2026-08-20). You are very often NOT alone in that repo: a human-driven session may be working in it at the same moment. Therefore:
+       - Stage EXPLICIT PATHS ONLY: 'git add <the exact files you edited>'. NEVER 'git add -A', 'git add .', or 'git commit -a'. On 2026-08-20 a session used 'git add -A' in production-monitor and silently swept another session's in-progress file into its commit; the commit message then described work it did not contain.
+       - NEVER commit a file you did not yourself modify in this run. If 'git status' shows changes you did not make, they belong to someone else. Leave them.
+       - If a file you NEED to change already has uncommitted changes you did not make, STOP and ESCALATE (class D). Do NOT stash, do NOT reset, do NOT overwrite: that destroys work in progress that exists nowhere else.
+       - 'git pull --rebase' before pushing if the push is rejected. Never force-push.
+     A push may cancel another run's in-flight CI via concurrency groups. That is acceptable and self-correcting (it costs a re-run). Absorbing or destroying someone else's uncommitted work is NOT.
   B. PRODUCT-CODE behavior fix (the app itself is genuinely wrong): fix it and deploy to STAGING only. Then ESCALATE the production promotion — do NOT promote product code to prod. (For staging-first projects prod promotion is 'gh workflow run deploy.yml -f confirm=deploy' — you must NEVER run that form for a product repo; that is Roger's gate.)
   C. FALSE-RED / SELF-HEALED (the source is GREEN now): confirm green with a real receipt (repro / live check / observed green run), then CLOSE it. NEVER close on a shallow "looks fine".
   D. LOW-CONFIDENCE / AMBIGUOUS root cause, OR the fix needs a destructive DB op / secret / payment / customer email / a business decision / Roger's OAuth hands: DO NOT act. ESCALATE with a written root-cause hypothesis and the exact one-line action for Roger.
