@@ -410,6 +410,23 @@ async function main() {
       log(`  scout queue unavailable (${String(e).slice(0, 120)}); continuing with the board only`)
     }
   }
+  // Prune stale attempt counters (added 2026-08-20). state.attempts was only ever cleared on
+  // a successful fix, so a key closed ANY other way (self-healed, expected, closed by a human
+  // or another session) kept its counter forever. If that same key ever came back it would
+  // start life at attempts=3 == MAX_ATTEMPTS and be parked as "auto-fix stuck" on its FIRST
+  // sighting, never dispatched, never diagnosed. Found live: 4 of 5 surviving counters
+  // belonged to incidents that were already fixed/expected/self-healed.
+  // The board is the source of truth: a key that is not open does not need a counter.
+  if (!FIXTURE) {
+    const live = new Set(incidents.map((i) => i.key))
+    const stale = Object.keys(state.attempts).filter((k) => !live.has(k))
+    if (stale.length) {
+      for (const k of stale) delete state.attempts[k]
+      saveState(state)
+      log(`  pruned ${stale.length} stale attempt counter(s) for incidents no longer open`)
+    }
+  }
+
   log(`board: ${incidents.length} open/blocked/investigating incident(s)`)
   if (incidents.length === 0) { log('nothing to drain — board is clean.'); return }
 
