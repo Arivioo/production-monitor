@@ -1,6 +1,6 @@
 # PLAN, UX Scout tier (2026-08-20)
 
-**Status:** Phases 0, 1, 2, 3 and the Measured half of 5 are BUILT AND LIVE (2026-08-20). Phase 4 (autonomy) is deliberately NOT built and needs a separate yes. Cockpit UI is blocked on the `factory` workstream lock.
+**Status:** Phases 0, 1, 2, 3, 4 and 5 (Measured + Cockpit page) are BUILT AND LIVE (2026-08-20). The Cockpit page (`/monitoring/scout`) shipped in a later session the same day, after the `factory` lock freed.
 **Origin:** PostHog "self-driving" KB entry `hFra0uH2NRM`. Roger's steer: not buying it, learning from it.
 **Companion memory:** `session_ux_scout_tier_proposal_2026_08_20.md`
 **Sibling plan (same shape, already shipped):** `PLAN-BOARD-DRAINER-2026-08-15.md`
@@ -202,7 +202,7 @@ Roger approved the plan and said to develop through as far as possible without s
 | 1c Coverage | **BUILT** `924ae73`, 5 sources + explicit not-covered list |
 | 5a Measured | **BUILT** | `verdict()` + `measurePass()` run on every weekly tick; `scout-triage.mjs mark <id> fixed` arms the 7-day re-check. 7 tests. |
 | 4 Autonomy | **BUILT** `e9c8e44` | Roger chose "staging, then stop" + a severity threshold. Boundary UNCHANGED. |
-| 5b Cockpit page | **NOT BUILT** | Blocked on the `factory` workstream lock. |
+| 5b Cockpit page | **BUILT, LIVE on prod** | Cockpit `e3d427f` (+ `d52bdb1` scrollbar fix). `/monitoring/scout`, acceptance round trip proven (details in the Phase 5b build log below). |
 
 ## Birth certificate (AUTOMATIONS_RUNBOOK.md, all five)
 
@@ -427,3 +427,54 @@ Placed deliberately **before** the dry-run early return, so `--dry-run` actually
 ## The lesson worth keeping
 
 **Fixing three instances is not fixing a class.** Both times today I fixed what I tripped over and called it done; both times an audit of the whole fleet found more. The durable form of the fix is the one that makes the next instance impossible, not the one that clears the current list.
+
+
+---
+
+# PHASE 5b, built 2026-08-20 (later session, after the factory lock freed)
+
+The Cockpit page, the visual equivalent of `scripts/scout-triage.mjs`. Lives at
+`cockpit.predivo.ch/monitoring/scout` (Monitoring -> "UX Scout" tab, third SectionNav entry).
+
+## What shipped (Cockpit repo)
+
+- `src/hooks/useScoutReports.ts`: reads `public.scout_reports` directly via the shared
+  Supabase client (migration 117's RLS already grants authenticated select/update, so NO
+  sql/ or mcp/ surface was touched, and nothing here can write `monitoring_incidents`).
+  `useMarkScoutReport` copies `scout-triage.mjs mark()` verbatim: reason mandatory for
+  every state except `new` (hook throws), `fixed` sets `measure_after = now()+7d` and
+  clears `measured_at`/`measured_result`.
+- `src/pages/ScoutReports.tsx`: grouped by product, unjudged first. Per row: user-vs-probe
+  badge (with distinct_users), occurrences, last_seen, narrative, collapsible
+  sample_evidence, state + reason, measured_result chip, armed re-check note.
+  Reason gate is UI-enforced: confirm disabled while empty.
+- Wired: `src/App.tsx` route, `src/lib/navigation.ts` (tab + palette icon),
+  `e2e/smoke.spec.ts` route list. Commits: `e3d427f` (page), `d52bdb1` (SectionNav fix, below).
+
+## Verification (the acceptance test was the round trip, not a screenshot)
+
+- Dev server pointed at BackOffice PROD via env override (no files edited); session minted
+  via admin generate_link, so no OTP email was sent.
+- Marked replyflow `create-billing-portal` "Missing authorization header" (718x, evidence
+  `has_auth:false`) not-real WITH a reason through real UI clicks; REST read-back confirmed
+  state + reason on prod. Confirm button proven disabled with an empty reason.
+- `UX_SCOUT_ENABLED=1 node scripts/ux-scout.mjs` then logged
+  "2 previously-judged pattern(s) will not be re-surfaced" (up from 1).
+- Deployed: STAGING green, then promoted to PROD same day; verified live in Roger's real
+  browser. Scripts kept in `C:/Business/scratchpad/scout-*.mjs|py`.
+
+## Bug found on the way: SectionNav 1px scrollbar
+
+Roger reported a tiny up/thumb/down scrollbar stack at the right end of the tab bar.
+Measured live in his browser: the shared `SectionNav` (`overflow-x-auto` + the
+`-mb-px`/`border-b-2` underline trick) overflows vertically by exactly 1px on EVERY tab
+bar in the app; his Windows classic scrollbars render it, overlay scrollbars hide it.
+Pre-existing, not introduced by the scout page. Fixed in `d52bdb1` (`overflow-y-hidden`),
+verified gone on prod in his browser.
+
+## Notes for the next session
+
+- The 718x probe pattern marked not-real during acceptance is a REAL judgement on prod
+  data. Roger may revisit it in the UI (Reopen).
+- Staging cockpit reads the STAGING BackOffice DB, so `/monitoring/scout` on staging shows
+  the empty state; the scout only writes to prod.
