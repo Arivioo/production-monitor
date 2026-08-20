@@ -339,6 +339,19 @@ function verdictToUpsert(inc, verdict) {
   }
 }
 
+/** Pure form of the stuck-escalation ownership decision, exported for tests.
+ *  Strips any previous stuck prefix (so it can never compound) and keeps the original owner
+ *  unless the remaining action genuinely needs Roger's hands. */
+export function stuckWhoMustAct(whoMustAct) {
+  const priorAction = String(whoMustAct || 'investigate manually')
+    .replace(/^(?:Roger|Claude)\s*[-:]\s*board-drainer could not resolve after \d+ tries;\s*/gi, '')
+    .replace(/^(?:Roger|Claude)\s*[-:]\s*auto-fix stuck[^;]*;\s*/gi, '')
+    .replace(/^(?:Roger|Claude)\s*[-:]\s*/i, '')   // strip the owner prefix; it is re-added below, so it must not double up
+    .trim()
+  const owner = HUMAN_HANDS.test(priorAction) ? 'Roger' : 'Claude'
+  return { owner, priorAction, value: `${owner} - ${priorAction}` }
+}
+
 // ── main ────────────────────────────────────────────────────────────────────────────────
 async function main() {
   // gates
@@ -412,12 +425,28 @@ async function main() {
     }
     const attempts = (state.attempts[inc.key] || 0) + 1
     if (attempts > MAX_ATTEMPTS) {
-      log(`  ${inc.key}: ${attempts - 1} prior failed attempts — escalating as auto-fix-stuck (owner Roger).`)
+      // STUCK. Two bugs used to live in this block (incident
+      // board-drainer-stuck-escalates-to-roger, filed 2026-08-20 by the monitor and verified
+      // by hand before this fix):
+      //
+      // 1. It hardcoded `Roger - ...` on EVERY stuck item, including pure code/spec/CI fixes
+      //    the drainer merely could not APPLY. That is precisely the graveyard Roger's
+      //    2026-08-12 rule forbids: a code fix must never end up sitting on him. Ownership
+      //    now SURVIVES: only an action that genuinely needs his hands (HUMAN_HANDS: OAuth,
+      //    payment, vendor, new secret, business decision) is re-owned to Roger. Everything
+      //    else stays Claude's, with "auto-fix stuck" recorded as the reason rather than as a
+      //    change of owner.
+      // 2. It CONCATENATED onto the previous who_must_act, so the prefix compounded on every
+      //    stuck pass and buried the real action behind repeated boilerplate. The underlying
+      //    action is now extracted and REPLACED, so it can never grow.
+      const { owner: stuckOwner, priorAction, value: stuckWho } = stuckWhoMustAct(inc.who_must_act)
+      const needsRogersHands = stuckOwner === 'Roger'
+      log(`  ${inc.key}: ${attempts - 1} prior failed attempts — escalating as auto-fix-stuck (owner ${stuckOwner}).`)
       await upsertIncident(secret, {
         p_source: inc.source, p_key: inc.key, p_title: inc.title, p_severity: 'critical', p_status: 'blocked',
-        p_root_cause: `[board-drainer] auto-fix STUCK after ${attempts - 1} attempts — needs Roger to look.`,
-        p_who_must_act: `Roger - board-drainer could not resolve after ${attempts - 1} tries; ${inc.who_must_act || 'investigate manually'}`,
-        p_evidence: { by: 'board-drainer', stuck: true, attempts: attempts - 1 },
+        p_root_cause: `[board-drainer] auto-fix STUCK after ${attempts - 1} attempts — the action below still stands, it just could not be applied automatically.`,
+        p_who_must_act: stuckWho,
+        p_evidence: { by: 'board-drainer', stuck: true, attempts: attempts - 1, stuckOwner, needsRogersHands },
       })
       continue
     }

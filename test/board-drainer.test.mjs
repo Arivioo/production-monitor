@@ -5,7 +5,7 @@
  * Run: node test/board-drainer.test.mjs   (exit 0 = all pass)
  */
 import assert from 'node:assert'
-import { classify, verdictToUpsert, meetsThreshold, scoutReportToIncident } from '../scripts/board-drainer.mjs'
+import { classify, verdictToUpsert, meetsThreshold, scoutReportToIncident, stuckWhoMustAct } from '../scripts/board-drainer.mjs'
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log(`  ok - ${name}`) }
@@ -135,4 +135,40 @@ t('a scout report asking for a DB delete still hard-escalates', () => {
     narrative: 'drop the orphaned rows',
   })))
   assert.equal(c.mode, 'verify')
+})
+
+
+// ── stuck-escalation ownership (incident board-drainer-stuck-escalates-to-roger, 2026-08-20) ──
+// Roger's 2026-08-12 hard rule: a CODE fix must never end up sitting on him. The old block
+// hardcoded "Roger - ..." on every stuck item and CONCATENATED onto the previous string.
+
+t('a stuck CODE fix keeps Claude as the owner, it does not land on Roger', () => {
+  const r = stuckWhoMustAct('Claude - fix the failing spec in gate-a-crawl.spec.ts')
+  assert.equal(r.owner, 'Claude')
+  assert.match(r.value, /^Claude - fix the failing spec/)
+})
+
+t("a stuck action that genuinely needs Roger's hands IS re-owned to Roger", () => {
+  assert.equal(stuckWhoMustAct('Claude - reconnect the Google OAuth account').owner, 'Roger')
+  assert.equal(stuckWhoMustAct('Claude - the vendor plan expired, renew the payment').owner, 'Roger')
+})
+
+t('the stuck prefix can NEVER compound across repeated passes', () => {
+  // This is the exact shape observed live: the boilerplate was prepended again each pass.
+  let v = 'Claude - fix the runner permissions'
+  for (let i = 0; i < 5; i++) v = stuckWhoMustAct(v).value
+  assert.equal(v, 'Claude - fix the runner permissions')
+  assert.equal((v.match(/could not resolve/g) || []).length, 0)
+})
+
+t('an already-compounded string is CLEANED, not appended to', () => {
+  const dirty = 'Roger - board-drainer could not resolve after 3 tries; Claude - fix kb-learning/RUNNER.md'
+  const r = stuckWhoMustAct(dirty)
+  assert.equal(r.priorAction, 'fix kb-learning/RUNNER.md')  // owner prefix stripped, re-added once
+  assert.equal(r.owner, 'Claude')
+})
+
+t('an empty who_must_act degrades to a safe, ownable action', () => {
+  const r = stuckWhoMustAct(null)
+  assert.equal(r.value, 'Claude - investigate manually')
 })
