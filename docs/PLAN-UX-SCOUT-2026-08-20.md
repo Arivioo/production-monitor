@@ -179,7 +179,7 @@ Phases 0 and 1 are the ones Roger approved on 2026-08-20. Everything from Phase 
 
 - **SignalScore `error_log` has 0 rows** (`ogdpgufptemcgyszmjek`, queried 2026-08-20). The helper exists at `signalscore/supabase/functions/_shared/error-log.ts` (1 call site). Dark instrumentation, so the scout will find nothing there until it is wired.
 - **ReplyFlow `ad_funnel_events` has 0 rows.** Same shape.
-- **ChannelMover** declares `posthog-js ^1.400.1` with no `posthog.init` anywhere in `src/`. Dead dependency in the bundle.
+- **ChannelMover analytics is WIRED.** CORRECTED 2026-08-20: an earlier note in this session claimed `posthog-js` was a dead dependency with no init. That was WRONG, and it came from grepping `src/` in a repo that has no `src/`. ChannelMover is an **EXPO** app; its source is `app/ components/ hooks/ lib/`, and `lib/analytics.ts` imports posthog-js and calls `posthog.init` with the same cookieless config as the others (persistence memory, autocapture false, disable_session_recording true). **Lesson: confirm a repo's actual source layout before concluding anything is unused.**
 - **`POSTHOG_PERSONAL_API_KEY`** (`BackOffice/docs/Credentials.txt:123`, host `eu.posthog.com`) is alive but has no read scopes (403 `permission_denied`, not 401) and zero consumers in the codebase.
 
 
@@ -495,3 +495,50 @@ It reads `scout_reports` directly under the table's existing RLS, so **no `sql/`
 The Monitoring Board turned over to three fresh parked items, and they are **the same two defects already fixed elsewhere**: `always()` instead of `!cancelled()` (now BackOffice, Valrano and SignalScore) and blocked-routes-never-asserted (ReplyFlow, now SignalScore). The Gate A crawler is being ported product by product and reintroducing both at each port.
 
 That is the same failure this document already records twice about my own work: **fixing instances is not fixing a class.** The durable move is to correct the template the port copies from, so the next product cannot inherit the defect.
+
+
+---
+
+# ROUND 4: closing every deferred item, and one more flaw in my own design
+
+Roger's instruction: *"you keep saying something is not blocking but optional, so I always want to have every optional thing done."* Fair. Every parked item is now done, investigated and closed, or converted into a named finding with its exact remediation.
+
+## The backlog is triaged: 24 of 24, zero unjudged
+
+17 `not-real`, 7 `known`, every one with a written reason. Most are provable rather than taste: `has_auth=false` on every occurrence means no signed-in user was affected, and an auth guard rejecting an anonymous hit is the guard working. Two were investigated properly:
+
+- The BackOffice **ledger** finding is not a live gap: one occurrence ever (2026-07-21, a race before the chart of accounts was populated), accounts 1020/3000 now exist and are active, 101 journal entries posted since, and the invoice named in its context **is booked** with its fee and a later refund. Nothing unbooked.
+- The Distribution-OS **stripe signature** finding is my own verification probe from 09:26Z. The function correctly returned 400.
+
+## The flaw the triage exposed, in the scout itself
+
+Almost every dismissal reads *"unauthenticated probe, has_auth=false on every occurrence"*. **That is only true while the pattern stays anonymous.** The scout skipped a dismissed pattern unconditionally and forever, so the day one of those messages began hitting a signed-in user it would be silently swallowed. A filter hiding the exact thing it was built to surface, which is the "noise filter rots" failure one layer deeper than the mandatory-reason rule guards against.
+
+Fixed **before** triaging, deliberately: dismissing 22 patterns under the old rule would have manufactured 22 permanent blind spots. A dismissal now holds only while the pattern is anonymous; a return as AUTHENTICATED reopens it, labelled so the old verdict is re-judged rather than inherited. A pre-existing test that **encoded the flaw** was corrected rather than kept.
+
+## Two corrections to claims I made earlier in this same document
+
+**ChannelMover's `posthog-js` is NOT a dead dependency.** I wrote that in three places. It came from grepping `src/` in a repo that has no `src/`: ChannelMover is an **Expo** app (`app/ components/ hooks/ lib/`) and `lib/analytics.ts` initialises PostHog with the same cookieless config as the rest. I had begun removing the dependency and caught it only because `npm run build` did not exist. Reverted, corrected in all five documents.
+
+**`ad_funnel_events` is not an orphan either.** It is written by `replyflow/supabase/functions/r/index.ts`, the ad-click redirect. Zero rows is correct: the Meta campaign is held.
+
+Both are the same mistake: concluding "unused" from a search that never looked in the right place.
+
+## SignalScore: 1 -> 13 of 16 functions instrumented
+
+Its `error_log` had the helper but one call site, so an empty table read as "nothing goes wrong here" instead of "nothing is looking". Three functions were deliberately **not** wired because their only candidate is a 400 JSON-guard, which would manufacture noise, and that is itself the finding: those three have **no top-level handler at all**. `get-company-officers` first landed in a helper returning `[]` and was re-targeted, the same mistake as ScoutCopilot's `report` earlier the same day. **The tail-most 2-space catch is not necessarily the handler's.**
+
+## The Gate A treadmill, quantified
+
+Two parked incidents cleared by porting fixes already proven elsewhere. The standing observation matters more: **there is no shared Gate A template.** `gate-a-crawl.spec.ts` is hand-copied per repo and has already drifted (641 / 593 / 576 / 538 lines). The same two defects have now been found and fixed **four times, once per product.** Until the corrected step and the `blockedRoutes` assertion are part of what the next port copies, the next product inherits both again.
+
+## The pattern across this whole session
+
+Four separate times today the same shape appeared, three of them in my own work:
+
+1. Fixed the config.toml landmine in three repos, called it done. An audit found a fourth and 35 at-risk functions.
+2. Fixed the stuck-ownership defect in the drainer (the consumer), left the prompt template (the producer) still seeding every finding wrongly.
+3. Dismissals were permanent, so the filter could hide the thing it was built to find.
+4. The Gate A rollout is fixing the same two defects once per product instead of once in the template.
+
+**Fixing instances is not fixing a class.** The durable move is always the one that makes the next instance impossible.
