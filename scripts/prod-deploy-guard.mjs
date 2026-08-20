@@ -155,6 +155,91 @@ function checkCi(repo, branch) {
   return { ciRun: run.url }
 }
 
+// ── 4b. verify_jwt declaration gate (added 2026-08-20) ─────────────────────────
+/**
+ * REFUSE to deploy a function whose LIVE verify_jwt is not declared in its repo's
+ * config.toml. This closes a whole class of silent production breaks.
+ *
+ * `supabase functions deploy` applies config.toml and defaults anything UNDECLARED to
+ * verify_jwt = true. A fleet audit on 2026-08-20 found 35 functions across 4 repos running
+ * false in production with nothing declaring it. Deploying any of them would have made them
+ * 401: Stripe webhooks stop applying payment events, auth-email hooks stop letting anyone log
+ * in, public endpoints go dark. ChannelMover alone had 32 such functions, and its CI only got
+ * away with it by passing --no-verify-jwt, a flag THIS script does not pass.
+ *
+ * That matters most here, because this is the AUTONOMOUS path: board-drainer.mjs hands this
+ * script to fix agents. An agent must never be able to break a product as a side effect of
+ * deploying an unrelated fix.
+ *
+ * Fails CLOSED: if live state cannot be read, or the value is undeclared, or the declaration
+ * disagrees with live, the deploy is refused with the exact line to add.
+ */
+export function verifyJwtGateDecision(liveValue, declaredValue) {
+  if (liveValue === undefined || liveValue === null) {
+    return { ok: false, reason: 'could not read live verify_jwt for this function (failing closed)' }
+  }
+  if (declaredValue === undefined) {
+    return {
+      ok: false,
+      reason: `live verify_jwt=${liveValue} but the function is NOT declared in supabase/config.toml. `
+        + `Deploying would default it to true and could silently break it. Add:
+`
+        + `  [functions.<name>]
+  verify_jwt = ${liveValue}`,
+    }
+  }
+  if (declaredValue !== liveValue) {
+    return {
+      ok: false,
+      reason: `config.toml says verify_jwt=${declaredValue} but PRODUCTION is ${liveValue}. `
+        + `The repo disagrees with live; reconcile deliberately before deploying.`,
+    }
+  }
+  return { ok: true, reason: `verify_jwt=${liveValue}, declared and matching` }
+}
+
+/** Parse [functions.X] verify_jwt out of a repo's supabase/config.toml. */
+export function declaredVerifyJwt(configToml, fn) {
+  if (!configToml) return undefined
+  for (const m of configToml.matchAll(/\[functions\.([A-Za-z0-9_-]+)\]([^\[]*)/g)) {
+    if (m[1] !== fn) continue
+    const v = /verify_jwt\s*=\s*(true|false)/.exec(m[2])
+    if (v) return v[1] === 'true'
+  }
+  return undefined
+}
+
+async function checkVerifyJwt(repo, fn, ref) {
+  const token = process.env.SUPABASE_ACCESS_TOKEN
+  if (!token) fail('SUPABASE_ACCESS_TOKEN not set — cannot read live verify_jwt, refusing (fail closed)')
+  let live
+  try {
+    const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/functions`, {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'prod-deploy-guard' },
+    })
+    if (!res.ok) fail(`could not list functions on ${ref} (HTTP ${res.status}) — refusing (fail closed)`)
+    const found = (await res.json()).find((x) => x.slug === fn)
+    live = found ? Boolean(found.verify_jwt) : undefined
+    if (found === undefined) {
+      // A brand-new function has no live row yet; config.toml is then the only authority.
+      const declaredNew = declaredVerifyJwt(readCfg(repo), fn)
+      if (declaredNew === undefined) fail(`${fn} is not deployed yet AND not declared in config.toml — declare it before the first deploy`)
+      log(`verify_jwt gate OK: ${fn} not yet deployed, config.toml declares ${declaredNew}`)
+      return
+    }
+  } catch (e) {
+    fail(`verify_jwt pre-read failed (${String(e).slice(0, 120)}) — refusing (fail closed)`)
+  }
+  const d = verifyJwtGateDecision(live, declaredVerifyJwt(readCfg(repo), fn))
+  if (!d.ok) fail(`verify_jwt gate: ${d.reason}`)
+  log(`verify_jwt gate OK: ${d.reason}`)
+}
+
+function readCfg(repo) {
+  const p = `${repo}/supabase/config.toml`
+  return existsSync(p) ? readFileSync(p, 'utf-8') : ''
+}
+
 // ── 5. deploy ──────────────────────────────────────────────────────────────────
 function deploy(repo, fn, ref) {
   const r = spawnSync('supabase', ['functions', 'deploy', fn, '--project-ref', ref, '--use-api'], {
@@ -236,6 +321,11 @@ async function main() {
   // 4. CI gate
   const { ciRun } = checkCi(a.repo, branch)
 
+  // 4b. verify_jwt declaration gate. Runs BEFORE the dry-run early-return on purpose, so a
+  // dry-run actually exercises it. A dry-run that short-circuits before a check cannot
+  // validate that check, which is exactly how the scout-ux constraint bug shipped today.
+  await checkVerifyJwt(a.repo, a.function, a.project)
+
   if (a.dryRun) {
     log('─'.repeat(60))
     log(`DRY-RUN: all preflight checks passed. WOULD now:`)
@@ -243,6 +333,7 @@ async function main() {
     log(`  2. probe ${a.probeMethod} ${a.probeUrl} (up to ${PROBE_TRIES}x, 15s apart${a.probeExpect ? `, expect "${a.probeExpect}"` : ''}) — auto-rollback on failure`)
     log(`  3. email receipt "[DEPLOY] prod ${a.function} -> ${a.project} (<status>)"`)
     log(`  4. count 1/${DAILY_CAP} against today's cap in ${STATE_FILE}`)
+    log(`  (verify_jwt declaration gate already PASSED above — it is not skipped in dry-run)`)
     log('DRY-RUN: no deploy, no probe, no email.')
     return
   }
