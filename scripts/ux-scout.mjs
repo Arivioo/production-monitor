@@ -355,8 +355,24 @@ function narrate(product, rows) {
     })), null, 1),
   ].join('\n')
 
-  const res = spawnSync('claude', ['-p', prompt], {
-    encoding: 'utf-8', timeout: 5 * 60 * 1000, shell: true,
+  // SECURITY (incident production-monitor:cdba231:...-command-injection, 2026-08-20).
+  // This used `shell: true`, which on Windows hands command+args to cmd.exe as ONE string
+  // with no escaping. The prompt is built from PRODUCTION ERROR TEXT (message_pattern and
+  // sample_evidence), which is attacker-influenced end to end: a signed-in user can put
+  // arbitrary characters into an error_log row (e.g. create-checkout assigns ctx.plan before
+  // isPlanKey() rejects it), and NORMALISE() collapses only UUIDs and whitespace, so quotes,
+  // &, |, ^, <, > and newlines all survive. That is arbitrary code execution on Roger's box,
+  // inside a process that has already read the BackOffice service key and every product's
+  // Management PAT.
+  //
+  // It was dormant until the same day's jsonb fix: before that, context->>'user_id' was
+  // always null, so nothing ever grouped as authenticated and narrate() never ran on a real
+  // row. Fixing one bug armed another.
+  //
+  // No shell. Explicit binary, args array, exactly the pattern board-drainer.mjs already uses.
+  const CLAUDE_BIN = process.platform === 'win32' ? 'claude.exe' : 'claude'
+  const res = spawnSync(CLAUDE_BIN, ['-p', prompt], {
+    encoding: 'utf-8', timeout: 5 * 60 * 1000,
   })
   if (res.status !== 0 || !res.stdout) {
     log(`  narration unavailable (${res.error?.message || `exit ${res.status}`}); reporting without it`)

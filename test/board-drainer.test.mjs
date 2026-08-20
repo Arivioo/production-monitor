@@ -5,7 +5,7 @@
  * Run: node test/board-drainer.test.mjs   (exit 0 = all pass)
  */
 import assert from 'node:assert'
-import { classify, verdictToUpsert, meetsThreshold, scoutReportToIncident, stuckWhoMustAct } from '../scripts/board-drainer.mjs'
+import { classify, verdictToUpsert, meetsThreshold, scoutReportToIncident, stuckWhoMustAct, isScoutDerived } from '../scripts/board-drainer.mjs'
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log(`  ok - ${name}`) }
@@ -171,4 +171,38 @@ t('an already-compounded string is CLEANED, not appended to', () => {
 t('an empty who_must_act degrades to a safe, ownable action', () => {
   const r = stuckWhoMustAct(null)
   assert.equal(r.value, 'Claude - investigate manually')
+})
+
+
+// ── a scout item must NEVER reach the incidents board ────────────────────────────────
+// monitoring_incidents.source CHECK allows only
+// healthchecks|sentry|production-monitor|cron|silent-failure. Writing scout-ux 400s, the
+// throw escaped the loop, worked_at was never set, and the same report re-dispatched an
+// Opus agent every tick forever with MAX_ATTEMPTS never tripping. The guard is now
+// structural, not a convention. (incident ...scout-ux-source-violates-incident-check-constraint)
+
+t('a scout-derived item is recognised by its report id', () => {
+  assert.equal(isScoutDerived(scoutReportToIncident(rep())), true)
+})
+
+t('a scout-derived item is recognised by source alone, even without an id', () => {
+  assert.equal(isScoutDerived({ source: 'scout-ux' }), true)
+})
+
+t('a normal incident is NOT scout-derived, so the board path is untouched', () => {
+  for (const src of ['healthchecks', 'sentry', 'production-monitor', 'cron', 'silent-failure']) {
+    assert.equal(isScoutDerived({ source: src }), false, src)
+  }
+  assert.equal(isScoutDerived(null), false)
+  assert.equal(isScoutDerived(undefined), false)
+})
+
+t('CONSTRAINT GUARD: no scout source is one the incidents CHECK accepts', () => {
+  // If anyone ever "fixes" this by renaming the source instead of keeping reports off the
+  // board, this test fails and says why.
+  const ALLOWED = ['healthchecks', 'sentry', 'production-monitor', 'cron', 'silent-failure']
+  const inc = scoutReportToIncident(rep())
+  assert.ok(!ALLOWED.includes(inc.source),
+    'scout items must stay OFF monitoring_incidents; reports are free, alarms are not')
+  assert.equal(isScoutDerived(inc), true, 'and must therefore be caught by the guard')
 })

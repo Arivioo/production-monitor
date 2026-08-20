@@ -125,6 +125,24 @@ async function fetchWithTransportRetry(url, init) {
   }
 }
 
+/** monitoring_incidents.source CHECK allows ONLY
+ *  healthchecks | sentry | production-monitor | cron | silent-failure.
+ *  A scout-derived item carries source='scout-ux', which the constraint REJECTS with a 400,
+ *  and upsertIncident throws on a non-ok response. Incident
+ *  production-monitor:e9c8e44:scout-ux-source-violates-incident-check-constraint (2026-08-20)
+ *  traced the consequence: the throw escapes the per-item loop, main() aborts BEFORE
+ *  markScoutReport(), worked_at is never set, readScoutQueue() filters on worked_at is null,
+ *  so the SAME report re-dispatches an Opus agent on every tick forever, and because
+ *  saveState() is also past the throw the MAX_ATTEMPTS guard never trips either. The
+ *  blast-radius guard failed OPEN.
+ *
+ *  The right fix is not to widen the constraint. A scout report is not an incident and must
+ *  never become one: reports are free, alarms are not. Scout items write ONLY to
+ *  scout_reports. This guard makes that structural rather than a convention. */
+export function isScoutDerived(inc) {
+  return Boolean(inc && (inc.scoutReportId || inc.source === 'scout-ux'))
+}
+
 async function upsertIncident(secret, payload) {
   const res = await fetchWithTransportRetry(`${BO_BASE}/rest/v1/rpc/upsert_incident`, {
     method: 'POST',
@@ -408,78 +426,100 @@ async function main() {
     return
   }
 
-  // 3. LIVE: dispatch + write back, with dedup-stuck escalation
+  // 3. LIVE: dispatch + write back, with dedup-stuck escalation.
+  //
+  // Each item is isolated. Previously a single throw anywhere in here (e.g. a rejected
+  // upsert) propagated out of main(), skipping every REMAINING item, skipping saveState()
+  // so the attempt counter never advanced, and skipping the scout write-back so the same
+  // report re-dispatched forever. The blast-radius guard failed OPEN. One bad item must cost
+  // exactly one item.
   for (const { inc, cls } of toWork) {
-    if (cls.mode === 'note') {
-      // Expected business state: no agent dispatch, no fix — note it on the board as `expected`.
-      log(`  ${inc.key}: expected business state — upserting status=expected (noted, no action).`)
-      await upsertIncident(secret, {
-        p_source: inc.source, p_key: inc.key, p_title: inc.title, p_severity: 'info', p_status: 'expected',
-        p_root_cause: `[board-drainer] ${inc.root_cause || inc.title} — vendor plan expired — noted, no action`.slice(0, 2000),
-        p_who_must_act: null,
-        p_evidence: { by: 'board-drainer', class: 'EXPECTED', note: 'vendor plan expired — noted, no action' },
-      })
-      delete state.attempts[inc.key]
+    try {  
+      if (cls.mode === 'note') {
+        // Expected business state: no agent dispatch, no fix — note it on the board as `expected`.
+        log(`  ${inc.key}: expected business state — upserting status=expected (noted, no action).`)
+        if (isScoutDerived(inc)) { log('    (scout-derived: recorded on the report, never on the incidents board)'); continue }
+        await upsertIncident(secret, {
+          p_source: inc.source, p_key: inc.key, p_title: inc.title, p_severity: 'info', p_status: 'expected',
+          p_root_cause: `[board-drainer] ${inc.root_cause || inc.title} — vendor plan expired — noted, no action`.slice(0, 2000),
+          p_who_must_act: null,
+          p_evidence: { by: 'board-drainer', class: 'EXPECTED', note: 'vendor plan expired — noted, no action' },
+        })
+        delete state.attempts[inc.key]
+        saveState(state)
+        continue
+      }
+      const attempts = (state.attempts[inc.key] || 0) + 1
+      if (attempts > MAX_ATTEMPTS) {
+        // STUCK. Two bugs used to live in this block (incident
+        // board-drainer-stuck-escalates-to-roger, filed 2026-08-20 by the monitor and verified
+        // by hand before this fix):
+        //
+        // 1. It hardcoded `Roger - ...` on EVERY stuck item, including pure code/spec/CI fixes
+        //    the drainer merely could not APPLY. That is precisely the graveyard Roger's
+        //    2026-08-12 rule forbids: a code fix must never end up sitting on him. Ownership
+        //    now SURVIVES: only an action that genuinely needs his hands (HUMAN_HANDS: OAuth,
+        //    payment, vendor, new secret, business decision) is re-owned to Roger. Everything
+        //    else stays Claude's, with "auto-fix stuck" recorded as the reason rather than as a
+        //    change of owner.
+        // 2. It CONCATENATED onto the previous who_must_act, so the prefix compounded on every
+        //    stuck pass and buried the real action behind repeated boilerplate. The underlying
+        //    action is now extracted and REPLACED, so it can never grow.
+        const { owner: stuckOwner, priorAction, value: stuckWho } = stuckWhoMustAct(inc.who_must_act)
+        const needsRogersHands = stuckOwner === 'Roger'
+        log(`  ${inc.key}: ${attempts - 1} prior failed attempts — escalating as auto-fix-stuck (owner ${stuckOwner}).`)
+        if (isScoutDerived(inc)) {
+          await markScoutReport(secret, inc.scoutReportId, { state: 'real', state_reason: `auto-fix stuck after ${attempts - 1} attempts: ${priorAction}`.slice(0, 500), worked_at: new Date().toISOString() })
+          state.attempts[inc.key] = attempts
+          saveState(state)
+          continue
+        }
+        await upsertIncident(secret, {
+          p_source: inc.source, p_key: inc.key, p_title: inc.title, p_severity: 'critical', p_status: 'blocked',
+          p_root_cause: `[board-drainer] auto-fix STUCK after ${attempts - 1} attempts — the action below still stands, it just could not be applied automatically.`,
+          p_who_must_act: stuckWho,
+          p_evidence: { by: 'board-drainer', stuck: true, attempts: attempts - 1, stuckOwner, needsRogersHands },
+        })
+        continue
+      }
+      log(`  dispatching agent [${cls.mode}] for ${inc.source}/${inc.key} (attempt ${attempts})...`)
+      const verdict = dispatchAgent(inc, cls.mode)
+      if (!verdict) {
+        state.attempts[inc.key] = attempts
+        log(`  no verdict for ${inc.key} — recorded attempt ${attempts}.`)
+        saveState(state)
+        continue
+      }
+      const payload = verdictToUpsert(inc, verdict)
+      // Scout-derived items never reach the incidents board (see isScoutDerived above).
+      if (!isScoutDerived(inc)) await upsertIncident(secret, payload)
+      log(`  ${inc.key}: verdict=${verdict.class} -> board status=${payload.p_status}${payload.p_status === 'blocked' ? ' (escalated)' : ''}`)
+      // Phase 4: close the loop back on the scout report this came from.
+      // `fixed` here ARMS the Measured re-check (ux-scout.mjs measurePass): 7 days later the
+      // scout re-runs that exact signal and records gone/reduced/unchanged/worse. Note that
+      // `fixed` on a product-code change means "fixed and deployed to STAGING"; the prod
+      // promotion is escalated to Roger, unchanged from every other incident.
+      if (inc.scoutReportId) {
+        const done = payload.p_status === 'fixed' || payload.p_status === 'self-healed'
+        await markScoutReport(secret, inc.scoutReportId, done
+          ? { state: 'fixed', state_reason: `board-drainer: ${verdict.action || verdict.class}`.slice(0, 500),
+              worked_at: new Date().toISOString(),
+              measure_after: new Date(Date.now() + 7 * 86400_000).toISOString() }
+          : { state_reason: `board-drainer could not close it: ${verdict.diagnosis || verdict.class}`.slice(0, 500),
+              worked_at: new Date().toISOString() })
+        log(`    scout report ${String(inc.scoutReportId).slice(0, 8)} -> ${done ? 'fixed, Measured re-check armed for 7 days' : 'left open, reason recorded'}`)
+      }
+      // clear the attempt counter only when we reached a terminal, non-stuck state
+      if (payload.p_status === 'fixed' || payload.p_status === 'self-healed') delete state.attempts[inc.key]
+      else state.attempts[inc.key] = attempts
       saveState(state)
-      continue
-    }
-    const attempts = (state.attempts[inc.key] || 0) + 1
-    if (attempts > MAX_ATTEMPTS) {
-      // STUCK. Two bugs used to live in this block (incident
-      // board-drainer-stuck-escalates-to-roger, filed 2026-08-20 by the monitor and verified
-      // by hand before this fix):
-      //
-      // 1. It hardcoded `Roger - ...` on EVERY stuck item, including pure code/spec/CI fixes
-      //    the drainer merely could not APPLY. That is precisely the graveyard Roger's
-      //    2026-08-12 rule forbids: a code fix must never end up sitting on him. Ownership
-      //    now SURVIVES: only an action that genuinely needs his hands (HUMAN_HANDS: OAuth,
-      //    payment, vendor, new secret, business decision) is re-owned to Roger. Everything
-      //    else stays Claude's, with "auto-fix stuck" recorded as the reason rather than as a
-      //    change of owner.
-      // 2. It CONCATENATED onto the previous who_must_act, so the prefix compounded on every
-      //    stuck pass and buried the real action behind repeated boilerplate. The underlying
-      //    action is now extracted and REPLACED, so it can never grow.
-      const { owner: stuckOwner, priorAction, value: stuckWho } = stuckWhoMustAct(inc.who_must_act)
-      const needsRogersHands = stuckOwner === 'Roger'
-      log(`  ${inc.key}: ${attempts - 1} prior failed attempts — escalating as auto-fix-stuck (owner ${stuckOwner}).`)
-      await upsertIncident(secret, {
-        p_source: inc.source, p_key: inc.key, p_title: inc.title, p_severity: 'critical', p_status: 'blocked',
-        p_root_cause: `[board-drainer] auto-fix STUCK after ${attempts - 1} attempts — the action below still stands, it just could not be applied automatically.`,
-        p_who_must_act: stuckWho,
-        p_evidence: { by: 'board-drainer', stuck: true, attempts: attempts - 1, stuckOwner, needsRogersHands },
-      })
-      continue
-    }
-    log(`  dispatching agent [${cls.mode}] for ${inc.source}/${inc.key} (attempt ${attempts})...`)
-    const verdict = dispatchAgent(inc, cls.mode)
-    if (!verdict) {
-      state.attempts[inc.key] = attempts
-      log(`  no verdict for ${inc.key} — recorded attempt ${attempts}.`)
+      } catch (e) {
+      // Record the attempt so a repeatedly-failing item still reaches MAX_ATTEMPTS and gets
+      // escalated, rather than retrying unbounded.
+      state.attempts[inc.key] = (state.attempts[inc.key] || 0) + 1
       saveState(state)
-      continue
+      log(`  ${inc.key}: ERRORED mid-work (${String(e).slice(0, 160)}) — attempt recorded, continuing with the next item.`)
     }
-    const payload = verdictToUpsert(inc, verdict)
-    await upsertIncident(secret, payload)
-    log(`  ${inc.key}: verdict=${verdict.class} -> board status=${payload.p_status}${payload.p_status === 'blocked' ? ' (escalated)' : ''}`)
-    // Phase 4: close the loop back on the scout report this came from.
-    // `fixed` here ARMS the Measured re-check (ux-scout.mjs measurePass): 7 days later the
-    // scout re-runs that exact signal and records gone/reduced/unchanged/worse. Note that
-    // `fixed` on a product-code change means "fixed and deployed to STAGING"; the prod
-    // promotion is escalated to Roger, unchanged from every other incident.
-    if (inc.scoutReportId) {
-      const done = payload.p_status === 'fixed' || payload.p_status === 'self-healed'
-      await markScoutReport(secret, inc.scoutReportId, done
-        ? { state: 'fixed', state_reason: `board-drainer: ${verdict.action || verdict.class}`.slice(0, 500),
-            worked_at: new Date().toISOString(),
-            measure_after: new Date(Date.now() + 7 * 86400_000).toISOString() }
-        : { state_reason: `board-drainer could not close it: ${verdict.diagnosis || verdict.class}`.slice(0, 500),
-            worked_at: new Date().toISOString() })
-      log(`    scout report ${String(inc.scoutReportId).slice(0, 8)} -> ${done ? 'fixed, Measured re-check armed for 7 days' : 'left open, reason recorded'}`)
-    }
-    // clear the attempt counter only when we reached a terminal, non-stuck state
-    if (payload.p_status === 'fixed' || payload.p_status === 'self-healed') delete state.attempts[inc.key]
-    else state.attempts[inc.key] = attempts
-    saveState(state)
   }
   log('Board Drainer done.')
 }
