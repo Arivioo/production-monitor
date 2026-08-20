@@ -392,6 +392,9 @@ async function main() {
 
   // 1. read the work-list
   let secret = null, incidents = []
+  // Did EVERY work-list source load this run? The prune below must never run on a partial
+  // picture (see the comment there).
+  let allSourcesLoaded = true
   if (FIXTURE) {
     incidents = JSON.parse(readFileSync(FIXTURE, 'utf-8'))
     log(`FIXTURE: ${incidents.length} synthetic incident(s) loaded from ${FIXTURE}`)
@@ -407,6 +410,7 @@ async function main() {
         incidents = incidents.concat(scout.map(scoutReportToIncident))
       }
     } catch (e) {
+      allSourcesLoaded = false
       log(`  scout queue unavailable (${String(e).slice(0, 120)}); continuing with the board only`)
     }
   }
@@ -417,7 +421,21 @@ async function main() {
   // sighting, never dispatched, never diagnosed. Found live: 4 of 5 surviving counters
   // belonged to incidents that were already fixed/expected/self-healed.
   // The board is the source of truth: a key that is not open does not need a counter.
-  if (!FIXTURE) {
+  //
+  // FAIL-SAFE (incident production-monitor:c2dd965:attempt-prune-wipes-scout-counters-on-fetch-failure,
+  // filed against the first version of this very prune, 2026-08-20). The first version pruned
+  // against `incidents` unconditionally. But the scout-queue fetch above SWALLOWS its own
+  // failure and continues "with the board only", so on any run where that fetch throws,
+  // `incidents` holds the board alone and EVERY scout-derived counter looks stale and gets
+  // deleted. That resets the MAX_ATTEMPTS breaker, so an unfixable scout report is
+  // re-dispatched from attempt 1 instead of parking as auto-fix-stuck - and each dispatch is a
+  // blocking multi-minute agent run. A merely flaky endpoint would have become an expensive
+  // loop. Exactly the fail-OPEN class this file was fixed for earlier the same day,
+  // reintroduced by the fix for a different fail-open.
+  //
+  // So: prune ONLY when the full work-list actually loaded. A missed prune is harmless (the
+  // next healthy run does it); a wrong prune disarms a safety limit.
+  if (!FIXTURE && allSourcesLoaded) {
     const live = new Set(incidents.map((i) => i.key))
     const stale = Object.keys(state.attempts).filter((k) => !live.has(k))
     if (stale.length) {
@@ -426,6 +444,8 @@ async function main() {
       log(`  pruned ${stale.length} stale attempt counter(s) for incidents no longer open`)
     }
   }
+
+  if (!FIXTURE && !allSourcesLoaded) log('  prune SKIPPED this run: a work-list source failed to load, so a stale counter cannot be told from an unfetched one')
 
   log(`board: ${incidents.length} open/blocked/investigating incident(s)`)
   if (incidents.length === 0) { log('nothing to drain — board is clean.'); return }
