@@ -45,7 +45,29 @@ const LOG = join(STATE_DIR, 'drainer.log')
 const VERDICT_PATH = join(STATE_DIR, 'drainer-verdict.json')
 const SEND_EMAIL = 'C:\\Users\\roger_rwjnmnz\\.claude\\scripts\\send_report_email.py'
 
-const MAX_PER_RUN = 3          // blast-radius cap: at most N incidents worked per tick
+// Blast-radius cap, still a hard ceiling, but no longer the ONLY control.
+const MAX_PER_RUN = Number(process.env.BOARD_DRAINER_MAX_PER_RUN || 3)
+
+// Severity threshold (Roger's call 2026-08-20, replacing a bare hardcoded 3 whose reasoning
+// nobody could reconstruct). Autonomy is now a POLICY you dial, the way PostHog's
+// P0/P1+/P2+/P3+/All selector works, rather than a magic number.
+//   'critical'  only critical
+//   'warning'   critical + warning   <- default
+//   'info'      everything
+// Items below the threshold are still CLASSIFIED and logged every run, they are simply not
+// dispatched, so lowering the dial never silently loses them.
+const SEVERITY_RANK = { critical: 3, warning: 2, info: 1 }
+const THRESHOLD = (process.env.BOARD_DRAINER_THRESHOLD || 'warning').toLowerCase()
+const THRESHOLD_RANK = SEVERITY_RANK[THRESHOLD] ?? SEVERITY_RANK.warning
+
+/** True when an incident is at or above the configured severity threshold.
+ *  An UNKNOWN/absent severity is treated as ABOVE the bar, never below: a row we cannot
+ *  grade is a row we must not silently skip. */
+export function meetsThreshold(inc, thresholdRank = THRESHOLD_RANK) {
+  const rank = SEVERITY_RANK[String(inc?.severity || '').toLowerCase()]
+  if (rank === undefined) return true
+  return rank >= thresholdRank
+}
 const MAX_ATTEMPTS = 3         // dedup-stuck: after N failed attempts on a key, escalate as "auto-fix stuck"
 const MODEL = 'claude-opus-4-8'
 const MAX_TURNS = 40
@@ -114,6 +136,66 @@ async function upsertIncident(secret, payload) {
   })
   if (!res.ok) throw new Error(`upsert_incident HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
   return res.text()
+}
+
+/**
+ * PHASE 4 (Roger's call 2026-08-20: "staging, then stop").
+ *
+ * A scout report is NOT an incident and never becomes one. It lives in its own table because
+ * reports are free and alarms are not. What Phase 4 adds is narrow: a report a HUMAN has
+ * marked `real` becomes eligible for the same fix agent, through the SAME unchanged boundary.
+ * Nothing about the autonomy limits moves. Product-code fixes still stop at staging and
+ * escalate the prod promotion to Roger, exactly as they do for every other incident today.
+ *
+ * The gate is the human mark. A scout report nobody judged is never worked, no matter how
+ * many users it hit or how confident the narrative sounds.
+ */
+async function readScoutQueue(secret) {
+  const url = `${BO_BASE}/rest/v1/scout_reports`
+    + `?select=id,product,function_name,operation,message_pattern,occurrences,distinct_users,authenticated,sample_evidence,narrative,state_reason`
+    + `&state=eq.real&worked_at=is.null&order=distinct_users.desc,occurrences.desc`
+  const res = await fetch(url, {
+    headers: { apikey: secret, Authorization: `Bearer ${secret}`, 'User-Agent': NON_BROWSER_UA },
+  })
+  if (!res.ok) throw new Error(`scout queue read HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  return res.json()
+}
+
+/** Shape a scout report so the EXISTING classifier and agent path can consume it unchanged.
+ *  Severity is derived, never invented: a failure that hit a signed-in person is `warning`,
+ *  an anonymous pattern a human still judged real is `info`. Neither is ever `critical`,
+ *  because a UX finding is by definition not an outage. */
+export function scoutReportToIncident(r) {
+  return {
+    source: 'scout-ux',
+    key: `${r.product}:${r.function_name}:${String(r.message_pattern).slice(0, 60)}`,
+    title: `[UX] ${r.product} ${r.function_name}: ${r.message_pattern}`,
+    severity: r.authenticated ? 'warning' : 'info',
+    status: 'open',
+    root_cause: [
+      r.narrative || '',
+      `${r.occurrences} occurrence(s), ${r.distinct_users} distinct user(s), authenticated=${Boolean(r.authenticated)}.`,
+      r.state_reason ? `Roger marked this real: ${r.state_reason}` : '',
+      `Evidence: ${JSON.stringify(r.sample_evidence || {})}`,
+    ].filter(Boolean).join(' '),
+    who_must_act: 'Claude - fix the user-facing failure, staging deploy only',
+    scoutReportId: r.id,
+  }
+}
+
+/** Close the loop on a worked report. Marking it `fixed` here is what arms the Measured
+ *  re-check (ux-scout.mjs measurePass), so the receipt can eventually say the PROBLEM
+ *  STOPPED rather than only that a change was made. */
+async function markScoutReport(secret, id, patch) {
+  const res = await fetch(`${BO_BASE}/rest/v1/scout_reports?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: secret, Authorization: `Bearer ${secret}`,
+      'User-Agent': NON_BROWSER_UA, 'Content-Type': 'application/json', Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) log(`  scout_reports patch failed for ${String(id).slice(0, 8)}: HTTP ${res.status}`)
 }
 
 // ── classifier: owner + hard-escalate gate (the nuanced fix decision is the agent's, under policy) ──
@@ -278,6 +360,17 @@ async function main() {
   } else {
     secret = readBoSecret()
     incidents = await readBoard(secret)
+    // Phase 4: human-approved scout reports join the same work-list, through the same
+    // classifier and the same unchanged autonomy boundary.
+    try {
+      const scout = await readScoutQueue(secret)
+      if (scout.length) {
+        log(`  scout queue: ${scout.length} report(s) marked real by Roger, awaiting a fix`)
+        incidents = incidents.concat(scout.map(scoutReportToIncident))
+      }
+    } catch (e) {
+      log(`  scout queue unavailable (${String(e).slice(0, 120)}); continuing with the board only`)
+    }
   }
   log(`board: ${incidents.length} open/blocked/investigating incident(s)`)
   if (incidents.length === 0) { log('nothing to drain — board is clean.'); return }
@@ -287,8 +380,11 @@ async function main() {
   for (const { inc, cls } of routed) {
     log(`  • [${cls.owner}/${cls.mode.toUpperCase()}] ${inc.source}/${inc.key} (${cls.reason}) :: ${inc.title}`)
   }
-  const toWork = routed.slice(0, MAX_PER_RUN)
-  if (routed.length > MAX_PER_RUN) log(`  blast-radius cap: ${routed.length} open, taking ${MAX_PER_RUN} this run.`)
+  const eligible = routed.filter(({ inc }) => meetsThreshold(inc))
+  const belowBar = routed.length - eligible.length
+  if (belowBar) log(`  severity threshold '${THRESHOLD}': ${belowBar} item(s) below the bar, classified and logged above but not dispatched.`)
+  const toWork = eligible.slice(0, MAX_PER_RUN)
+  if (eligible.length > MAX_PER_RUN) log(`  blast-radius cap: ${eligible.length} eligible, taking ${MAX_PER_RUN} this run.`)
 
   // In DRY-RUN or FIXTURE we stop here: classification only, nothing dispatched or written.
   if (!LIVE || FIXTURE) {
@@ -336,6 +432,21 @@ async function main() {
     const payload = verdictToUpsert(inc, verdict)
     await upsertIncident(secret, payload)
     log(`  ${inc.key}: verdict=${verdict.class} -> board status=${payload.p_status}${payload.p_status === 'blocked' ? ' (escalated)' : ''}`)
+    // Phase 4: close the loop back on the scout report this came from.
+    // `fixed` here ARMS the Measured re-check (ux-scout.mjs measurePass): 7 days later the
+    // scout re-runs that exact signal and records gone/reduced/unchanged/worse. Note that
+    // `fixed` on a product-code change means "fixed and deployed to STAGING"; the prod
+    // promotion is escalated to Roger, unchanged from every other incident.
+    if (inc.scoutReportId) {
+      const done = payload.p_status === 'fixed' || payload.p_status === 'self-healed'
+      await markScoutReport(secret, inc.scoutReportId, done
+        ? { state: 'fixed', state_reason: `board-drainer: ${verdict.action || verdict.class}`.slice(0, 500),
+            worked_at: new Date().toISOString(),
+            measure_after: new Date(Date.now() + 7 * 86400_000).toISOString() }
+        : { state_reason: `board-drainer could not close it: ${verdict.diagnosis || verdict.class}`.slice(0, 500),
+            worked_at: new Date().toISOString() })
+      log(`    scout report ${String(inc.scoutReportId).slice(0, 8)} -> ${done ? 'fixed, Measured re-check armed for 7 days' : 'left open, reason recorded'}`)
+    }
     // clear the attempt counter only when we reached a terminal, non-stuck state
     if (payload.p_status === 'fixed' || payload.p_status === 'self-healed') delete state.attempts[inc.key]
     else state.attempts[inc.key] = attempts

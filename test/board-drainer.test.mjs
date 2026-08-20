@@ -5,7 +5,7 @@
  * Run: node test/board-drainer.test.mjs   (exit 0 = all pass)
  */
 import assert from 'node:assert'
-import { classify, verdictToUpsert } from '../scripts/board-drainer.mjs'
+import { classify, verdictToUpsert, meetsThreshold, scoutReportToIncident } from '../scripts/board-drainer.mjs'
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log(`  ok - ${name}`) }
@@ -56,3 +56,83 @@ t('blocked -> carries who_must_act for Roger', () => {
 })
 
 console.log(`\n${n} assertions passed.`)
+
+
+// ── PHASE 4: severity threshold (Roger's call 2026-08-20, replacing a bare MAX_PER_RUN=3) ──
+const RANK = { critical: 3, warning: 2, info: 1 }
+
+t('threshold warning: critical and warning are worked, info is not', () => {
+  assert.equal(meetsThreshold({ severity: 'critical' }, RANK.warning), true)
+  assert.equal(meetsThreshold({ severity: 'warning' }, RANK.warning), true)
+  assert.equal(meetsThreshold({ severity: 'info' }, RANK.warning), false)
+})
+
+t('threshold critical: only critical is worked', () => {
+  assert.equal(meetsThreshold({ severity: 'critical' }, RANK.critical), true)
+  assert.equal(meetsThreshold({ severity: 'warning' }, RANK.critical), false)
+})
+
+t('threshold info: everything is worked', () => {
+  for (const sev of ['critical', 'warning', 'info']) {
+    assert.equal(meetsThreshold({ severity: sev }, RANK.info), true)
+  }
+})
+
+t('an UNKNOWN severity is never silently skipped', () => {
+  // A row we cannot grade must go ABOVE the bar, not below. Skipping the ungradeable is how
+  // a threshold quietly becomes a blind spot.
+  assert.equal(meetsThreshold({ severity: null }, RANK.critical), true)
+  assert.equal(meetsThreshold({ severity: 'nonsense' }, RANK.critical), true)
+  assert.equal(meetsThreshold({}, RANK.critical), true)
+})
+
+// ── PHASE 4: scout reports enter through the SAME unchanged boundary ──────────────────
+const rep = (o = {}) => ({
+  id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', product: 'replyflow',
+  function_name: 'connect-platform', operation: 'oauth',
+  message_pattern: 'No stored tokens, restart OAuth flow',
+  occurrences: 38, distinct_users: 4, authenticated: true,
+  sample_evidence: { user_id: 'u1' }, narrative: 'users dead-end in OAuth',
+  state_reason: 'confirmed by replay', ...o,
+})
+
+t('a scout report that hit a signed-in user maps to severity=warning', () => {
+  assert.equal(scoutReportToIncident(rep()).severity, 'warning')
+})
+
+t('an anonymous-but-human-approved report maps to info, never critical', () => {
+  const inc = scoutReportToIncident(rep({ authenticated: false }))
+  assert.equal(inc.severity, 'info')
+  assert.notEqual(inc.severity, 'critical')
+})
+
+t('a scout report carries its id so the loop can be closed back', () => {
+  assert.equal(scoutReportToIncident(rep()).scoutReportId, rep().id)
+})
+
+t("REGRESSION GUARD: an OAuth scout report still hard-escalates, autonomy did NOT widen", () => {
+  // Phase 4 must not smuggle a new autonomy class in. This report is exactly the kind the
+  // scout surfaces, and OAuth is in HUMAN_HANDS, so it must still land in verify-only mode
+  // owned by Roger, identical to before Phase 4 existed.
+  const c = classify(scoutReportToIncident(rep()))
+  assert.equal(c.mode, 'verify')
+  assert.equal(c.owner, 'roger')
+})
+
+t('a plain UX copy fix from the scout is Claude-owned and fixable', () => {
+  const c = classify(scoutReportToIncident(rep({
+    message_pattern: 'empty state gives no guidance',
+    narrative: 'the empty state text does not tell the user where to go',
+    state_reason: 'copy only',
+  })))
+  assert.equal(c.owner, 'claude')
+  assert.equal(c.mode, 'fix')
+})
+
+t('a scout report asking for a DB delete still hard-escalates', () => {
+  const c = classify(scoutReportToIncident(rep({
+    message_pattern: 'orphan rows should be deleted from the connections table',
+    narrative: 'drop the orphaned rows',
+  })))
+  assert.equal(c.mode, 'verify')
+})
