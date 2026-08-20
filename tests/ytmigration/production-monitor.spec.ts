@@ -336,7 +336,7 @@ test.describe('ChannelMover — Production Monitor', () => {
       const unreachable = results.filter((r) => !r.reachable)
       expect(
         unreachable,
-        `Deployed functions returning 404: ${unreachable.map((r) => r.slug).join(', ')}`,
+        `Deployed functions not answering (missing or 5xx): ${unreachable.map((r) => `${r.slug} [${r.status}]`).join(', ')}`,
       ).toEqual([])
     })
   })

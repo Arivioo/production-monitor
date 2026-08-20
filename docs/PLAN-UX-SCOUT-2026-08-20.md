@@ -237,3 +237,63 @@ Every digest now opens with `Coverage: N product(s) read` (plus an UNREADABLE co
 11 reports. **Zero authenticated user failures across the whole fleet**, which given roughly 39 users is the correct answer rather than a broken run. ReplyFlow's 1,345 anonymous occurrences over 14 days are the four probe patterns; SignalScore contributed one `firecrawl HTTP 502`. Nothing paged, nothing was emailed (a quiet week is silent by design).
 
 The honest read: the scout will find little until the fleet has users. Its value today is that the 339 `Missing reviewId` rows are now one query away from being provably bot traffic rather than a permanent unknown, and that the machinery is in place before it is needed rather than after.
+
+
+---
+
+# ROUND 2 (2026-08-20): the three coverage gaps, answered
+
+Roger challenged all three exclusions in the coverage table above. He was right on every one; none of them were reasons, they were excuses. All three are now closed.
+
+## 1. Valrano "READ FAILED" was never a scout problem
+
+Root cause: Valrano's two projects moved to a new org on 2026-07-30, so the token sitting on the canonical `Access Token:` line of `Valrano/docs/Credentials.txt` is the **retired distributionos PAT**. The live one was four lines above, labelled `CI PAT on this account` ("valrano-ci-deploy").
+
+Verified 2026-08-20: retired PAT -> **HTTP 403**, valrano-ci-deploy PAT -> **HTTP 201**.
+
+Fixed in the credentials file itself, not worked around in the scout, so every tool that reads that file benefits.
+
+**Then the same defect was found in Distribution-OS**: retired `supabase@` PAT on the labelled line, live `db@` "distributionos-ci-deploy" PAT further down. Same verification (403 vs 201), same fix. This is a **systemic residue of the 2026-07-30 org reorg** and is worth checking on any product whose Supabase account moved.
+
+## 2. BackOffice: "its only user is Roger" was the wrong call
+
+There is a user, and when it breaks he is who it breaks for. On checking: `error_log` held **22 rows, 21 of them the Smartlead `HTTP 401 "Plan expired!"` still firing that morning**. Excluding BackOffice was actively hiding a recurring failure that is already an open item. Now watched.
+
+## 3. "No failure table exists" is a reason to build one
+
+`ScoutCopilot` (9 auth users, 16 edge functions), `Distribution-OS` (5 users, 6 functions) and `launchready` (3 users, 2 functions) shipped with **no failure table at all**: every caught error went to `console.error` inside Supabase and vanished.
+
+Built for each: an `error_log` migration (shape copied verbatim from the ReplyFlow production table so one scout query works everywhere, RLS on, no grant to anon/authenticated), a `_shared/error-log.ts` that passes `context` as a jsonb object **correct from the start**, and `logError` at the outermost catch of every function. Applied to staging where one exists, then production, and deployed.
+
+### Two real defects found while doing it
+
+**Distribution-OS had no `config.toml` at all** while production ran `stripe-webhook` and `send-auth-email` at `verify_jwt=false`. `supabase functions deploy` defaults anything undeclared to `true`, so the next bulk deploy by anyone would have silently 401'd every Stripe webhook (payment events stop applying, Stripe retries then gives up) and broken every auth email (nobody can sign up or log in). Found by reading the live state via the Management API **before** deploying. `config.toml` now records all six values verbatim. Staging had already drifted to all-true; the deploy corrected it.
+
+**Two ScoutCopilot imports landed inside multi-line `import {` blocks** (`compare`, `import-team`), because the insertion heuristic matched the opening line as "the last import". Caught by the Supabase bundler on the first deploy attempt, which is the real gate here since `deno check` **segfaults on this repo's unmodified files at HEAD** (reproduced via `git stash`, so it is a pre-existing toolchain problem, not these edits). Both moved to first-import position, which is always valid.
+
+## Result
+
+| | before | after |
+|---|---|---|
+| Products read | 3 | **9** |
+| Unreadable | 1 (valrano) | **0** |
+| Products with no failure table | 3 | **0** |
+| `NOT_COVERED` list | 4 entries | **empty** |
+
+The digest still prints a coverage line when nothing is skipped ("Every product that ships edge functions has a failure table and is watched"), because going quiet about coverage is exactly how a silent cap creeps back in.
+
+## The payoff, on production
+
+ReplyFlow PROD, a real row minutes after the promotion landed:
+
+```
+generate-reply  "Missing reviewId"
+{"preview": false, "has_auth": false, "review_id": null, "business_id": null,
+ "service_call": false, "has_review_id": false}
+```
+
+`has_auth: false`. The 339-occurrence pattern is now **provably** unauthenticated traffic rather than a user hitting a wall. This morning that was a permanent unknown, and the 2026-07-29 calibration that filtered it was an assumption. It is now a fact.
+
+## Process note
+
+`c200c3c` was staged with `git add -A` in a repo another session was working in, and swept in an unrelated in-progress change to `lib/edgeFunctions.ts`. Not reverted (the content is valid and reverting would destroy that session's work); recorded in `41ed654`. Stage explicit paths in a repo under a shared workstream lock.
