@@ -70,7 +70,7 @@ export const SOURCES_FOR_TEST = [
     product: 'channelmover',
     repo: 'ChannelMover',
     table: 'error_log',
-    contextFixed: false,
+    contextFixed: true, // 5721994, deployed PROD 2026-08-20
     sql: (days) => ERROR_LOG_SQL(days),
   },
   {
@@ -80,7 +80,7 @@ export const SOURCES_FOR_TEST = [
     product: 'signalscore',
     repo: 'signalscore',
     table: 'api_request_logs',
-    contextFixed: false,
+    contextFixed: true, // 7049391, deployed PROD 2026-08-20
     sql: (days) => `
       select coalesce(service, 'unknown') as function_name,
              coalesce(endpoint, '') as operation,
@@ -108,14 +108,15 @@ export const SOURCES_FOR_TEST = [
     sql: (days) => ERROR_LOG_SQL(days),
   },
   {
-    // Valrano: writes error_log, but its Management PAT returned "account does not have the
-    // necessary privileges" on 2026-08-20. Left IN the list on purpose so the digest reports
-    // it as READ FAILED every week. Dropping it would silently shrink coverage, which is the
-    // exact failure this tool is supposed to prevent.
+    // Valrano. Its Management PAT returned 403 on the first run, which turned out to be a
+    // RETIRED token sitting on the canonical "Access Token:" line of its Credentials.txt
+    // after the 2026-07-30 org move (retired -> 403, valrano-ci-deploy -> 201). Fixed in the
+    // credentials file, so the scout reads it normally now. Kept as a reminder that a
+    // READ FAILED is a lead to chase, never a reason to drop a product from coverage.
     product: 'valrano',
     repo: 'Valrano',
     table: 'error_log',
-    contextFixed: false,
+    contextFixed: true, // 5dc0de5, 3 error-log consumers deployed PROD 2026-08-20
     sql: (days) => ERROR_LOG_SQL(days),
   },
   {
@@ -127,7 +128,7 @@ export const SOURCES_FOR_TEST = [
     product: 'backoffice',
     repo: 'BackOffice',
     table: 'error_log',
-    contextFixed: false, // committed 39b4f2f, NOT deployed (BO CI does not ship edge functions)
+    contextFixed: true, // 39b4f2f, 13 error-log consumers deployed PROD 2026-08-20
     // BackOffice CI does not deploy edge functions (.github/workflows/deploy.yml:226), so its
     // deploy.yml carries no --project-ref for resolveProdRef() to find. The ref therefore comes
     // from the next-best source of truth, named here so it is auditable rather than magic.
