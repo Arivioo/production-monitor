@@ -195,10 +195,11 @@ Roger approved the plan and said to develop through as far as possible without s
 |---|---|---|
 | 0 Evidence | **LIVE on staging, prod promotion dispatched** | ReplyFlow `3e353c6`. Staging proof by query: newest row `jsonb_typeof(context)='object'`, `context={"has_auth": false}`; the two rows from before the deploy still read `'string'` / `"{}"`. |
 | 0b jsonb fix ported | **pushed** | ChannelMover `5721994`, SignalScore `7049391`. Still present in BackOffice and arivioo. |
-| 1 The scout | **BUILT, first LIVE run done** | `scripts/ux-scout.mjs`, 21 unit tests green, 11 reports written to `scout_reports` on BackOffice prod. |
+| 1 The scout | **BUILT, first LIVE run done** | `scripts/ux-scout.mjs`, 24 unit tests green, 11 reports written to `scout_reports` on BackOffice prod. |
 | 1b Table | **LIVE both refs** | BackOffice migration 117, applied by hand to staging `vvgqkwiqauafcflshsec` and prod `xoecpzfsskalvjrtcbbl`. Verified: 21 columns, RLS on, 3 policies, RPC present. |
 | 2 Second shift | **REGISTERED, LIVE** | `UX-Scout-LocalRunner`, weekly Mon 07:20, next run 2026-08-24 07:20. Battery gates off, StartWhenAvailable on. |
 | 3 Triage teaches it | **BUILT, loop proven end to end** | `scripts/scout-triage.mjs`. Marked one report not-real with a reason; the next scout run logged "1 previously-judged pattern(s) will not be re-surfaced" and "1 skipped". |
+| 1c Coverage | **BUILT** `924ae73`, 5 sources + explicit not-covered list |
 | 5a Measured | **BUILT** | `verdict()` + `measurePass()` run on every weekly tick; `scout-triage.mjs mark <id> fixed` arms the 7-day re-check. 7 tests. |
 | 4 Autonomy | **NOT BUILT, on purpose** | This is where a robot changes product code from a UX signal. Needs its own yes. |
 | 5b Cockpit page | **NOT BUILT** | Blocked on the `factory` workstream lock. |
@@ -214,6 +215,22 @@ Roger approved the plan and said to develop through as far as possible without s
 ## Bug found and fixed on the way
 
 **Board-Drainer-LocalRunner had both battery gates ON.** Audited during the birth-certificate check: `DisallowStartIfOnBatteries=True`, `StopIfGoingOnBatteries=True`, while all three sibling runners (AgentTriage, DeployTriage, Needs-Roger Closer) had them False. `New-ScheduledTaskSettingsSet` defaults them to True, and this is exactly how the brain tasks silently skipped for days on 2026-08-10. A drainer that skips looks identical to a clean board. Fixed in `setup-board-drainer-task.ps1` and the task re-registered; both now False, still ENABLED and LIVE on the 20-minute repeat.
+
+## Coverage (added after the first run, `924ae73`)
+
+The first build read 3 products and printed "no authenticated user hit a failure in any product". Six products write a failure table. **A scout that says "fleet-wide" while covering half the fleet manufactures false confidence, which is worse than no scout.** Fixed:
+
+| Product | Watched | Note |
+|---|---|---|
+| replyflow | yes | `error_log` |
+| channelmover | yes | `error_log` |
+| signalscore | yes | `api_request_logs`, status_code >= 400 (`error_log` is empty) |
+| arivioo | yes | `error_log`, 0 rows at 2026-08-20. Watched anyway: the day an empty source starts producing is the day nobody notices. |
+| valrano | yes, **currently READ FAILED** | Management PAT returns 403 "account does not have the necessary privileges". Deliberately left in the list so the gap is reported every week rather than silently dropped. This also means the digest emails weekly until the credential is fixed, on purpose. |
+| backoffice | no | internal admin tool, only user is Roger |
+| scoutcopilot / launchready / distribution-os | no | no error-log helper in the repo, so there is no failure table to read |
+
+Every digest now opens with `Coverage: N product(s) read` (plus an UNREADABLE count) and closes with the NOT-watched list and the reason for each.
 
 ## What the first live run actually found
 
