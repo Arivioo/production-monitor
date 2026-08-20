@@ -8,6 +8,7 @@ import {
   isFunctionReachable,
 } from '../../lib/edgeFunctions'
 import { fetchRouteManifest, checkPublicRoutes } from '../../lib/publicRoutes'
+import { ensureOnboardedBusiness } from '../../lib/replyflow'
 
 const SITE_URL = process.env.REPLYFLOW_URL || 'https://replyflow.help'
 const SUPABASE_URL = process.env.REPLYFLOW_SUPABASE_URL!
@@ -41,16 +42,23 @@ test.describe('ReplyFlow — Production Monitor', () => {
       plan: 'business',
       status: 'active',
     })
+    // Seed the user as genuinely onboarded (a business + a completed
+    // reply_profiles row). ReplyFlow's OnboardingGate is a mandatory modal for
+    // any account without one and it swallows every click — see
+    // lib/replyflow.ts for why the old localStorage seam no longer works.
+    await ensureOnboardedBusiness(SUPABASE_URL, SERVICE_ROLE_KEY, TEST_EMAIL)
     // Ensure the shared IMAP test user exists for OTP email delivery tests
     if (OTP_TEST_EMAIL && OTP_TEST_EMAIL !== TEST_EMAIL) {
       await ensureTestUser(SUPABASE_URL, SERVICE_ROLE_KEY, OTP_TEST_EMAIL)
     }
   })
 
-  // The onboarding wizard (OnboardingGate) auto-opens for users without a
-  // completed onboarding — which the monitor test user never completes — and
-  // its modal blocks every interaction test. ReplyFlow ships a test seam for
-  // exactly this: rf_e2e_no_onboarding=1 suppresses the gate (OnboardingGate.tsx).
+  // Belt-and-braces only: rf_e2e_no_onboarding is compiled OUT of the
+  // production bundle (ReplyFlow 4de26ba gated the E2E seams behind
+  // VITE_E2E_SEAMS so devtools couldn't disable the trial paywall), so on
+  // replyflow.help this flag is inert. The real defence is the seeded
+  // completed business in beforeAll; the flag is kept for staging/dev runs of
+  // this spec where the seam does ship.
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('rf_e2e_no_onboarding', '1'))
   })

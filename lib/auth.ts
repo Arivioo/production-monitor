@@ -98,6 +98,33 @@ export async function ensureTestUser(
 }
 
 /**
+ * Resolves an auth user's id from their email address. The admin API has no
+ * getUserByEmail, so this pages through listUsers. Shared by every seeding
+ * helper that has to write a row keyed on user_id.
+ */
+export async function resolveUserIdByEmail(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  email: string,
+  label = 'resolveUserIdByEmail',
+): Promise<string> {
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+  let userId: string | undefined
+  for (let page = 1; page <= 10 && !userId; page++) {
+    const { data, error } = await withKeyRetry('listUsers', serviceRoleKey, () =>
+      supabase.auth.admin.listUsers({ page, perPage: 1000 }),
+    )
+    if (error) throw new Error(`${label} listUsers failed: ${error.message}`)
+    userId = data.users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase())?.id
+    if (data.users.length < 1000) break
+  }
+  if (!userId) throw new Error(`${label}: no auth user found for ${email}`)
+  return userId
+}
+
+/**
  * Forces the monitor's test user onto a fully-entitled plan so feature-gated
  * pages render their real content instead of an upsell screen.
  *
@@ -126,17 +153,7 @@ export async function setUserPlan(
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  // Resolve user_id by email (admin API has no getUserByEmail).
-  let userId: string | undefined
-  for (let page = 1; page <= 10 && !userId; page++) {
-    const { data, error } = await withKeyRetry('listUsers', serviceRoleKey, () =>
-      supabase.auth.admin.listUsers({ page, perPage: 1000 }),
-    )
-    if (error) throw new Error(`setUserPlan listUsers failed: ${error.message}`)
-    userId = data.users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase())?.id
-    if (data.users.length < 1000) break
-  }
-  if (!userId) throw new Error(`setUserPlan: no auth user found for ${email}`)
+  const userId = await resolveUserIdByEmail(supabaseUrl, serviceRoleKey, email, 'setUserPlan')
 
   const table = opts.table ?? 'subscriptions'
   const row: Record<string, unknown> = {
