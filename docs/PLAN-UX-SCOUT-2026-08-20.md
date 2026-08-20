@@ -340,3 +340,40 @@ A labelled self-test row, dry-run only, deleted afterwards:
 That second result is worth keeping in mind: **an LLM-written narrative can trip a safety guard, and when it does the result is escalation, never a wider action.** Fail-safe in the right direction.
 
 10 new tests, including a regression guard asserting an OAuth-class scout report still hard-escalates exactly as it did before Phase 4 existed.
+
+
+---
+
+# FINAL ROUND: the loop caught its own author
+
+The first unattended LIVE drainer tick with Phase 4 ran clean at **09:56:56Z**. Minutes later the commit-review automation filed **three findings against code written earlier the same day**, two of them critical. All three verified by hand before fixing.
+
+| Finding | Where | Fix |
+|---|---|---|
+| **Command injection** on the operator workstation | `ux-scout.mjs` narrate() ran `spawnSync(..., { shell: true })` on production error text | `798432f` |
+| **Constraint violation + fail-open loop** | `board-drainer.mjs` wrote `source='scout-ux'`, which the incidents CHECK rejects | `798432f` |
+| Stuck escalations dumped every auto-fix on Roger, and compounded | pre-existing stuck block | `6dfb826` |
+
+## The injection, because the chain is worth remembering
+
+`shell: true` on Windows hands command+args to `cmd.exe` as one unescaped string. The prompt was built from `message_pattern` and `sample_evidence`, i.e. production error text. `NORMALISE()` collapses only UUIDs and whitespace, so quotes, `&`, `|`, `^`, `<`, `>` and newlines all survive.
+
+The reachable path, verified by reading the file: `create-checkout/index.ts` assigns `ctx.plan = plan` **before** `isPlanKey()` rejects it. So a signed-in user puts arbitrary characters into `error_log.context` with `user_id` already set, the row groups as authenticated, and that is exactly the set `narrate()` runs on. The process holds the BackOffice service key and every product's Management PAT.
+
+**It was dormant until the same session's jsonb fix.** Before that, `context->>'user_id'` was always null fleet-wide, nothing ever grouped as authenticated, and `narrate()` never ran on a real row. **Fixing one bug armed another.** That is the part worth carrying forward: a dormant path can be armed by an unrelated correctness fix, and neither change looks dangerous on its own.
+
+## Why the fail-open loop is worse than it first reads
+
+`upsertIncident` throws on a non-ok response, and the throw escaped the per-item loop. `main()` aborted **before** `markScoutReport()`, so `worked_at` stayed null; `readScoutQueue` filters on `worked_at is null`; so the same report would re-dispatch an Opus agent **every tick, forever**. And because `saveState()` also sat past the throw, `MAX_ATTEMPTS` never incremented: **the blast-radius guard failed open rather than closed.**
+
+Fixed structurally, not by widening the constraint. A scout report is not an incident and must never become one, so `isScoutDerived()` now guards all three upsert paths, and each item is isolated in `try/catch` so one bad item costs exactly one item and still records an attempt.
+
+## What my own verification missed, and the guard added for it
+
+The dry-run returns before any `upsertIncident` call, and the Phase 4 tests asserted severity, id and classifier routing but never `p_source`. **A dry-run that short-circuits before the write path cannot validate the write path.** A CONSTRAINT GUARD test now fails loudly if anyone "fixes" this by renaming the source instead of keeping reports off the board.
+
+Tests: **29 board-drainer assertions + 26 ux-scout.** Writing them caught a bug in the fix itself (the first version double-prefixed `Claude - Claude - ...`).
+
+## Board hygiene note
+
+Closing these, I upserted under `source='production-monitor'` when the real rows were `source='silent-failure'`, creating two duplicates. **The upsert key is `(source, key)`: read a row's actual source before closing it.** Duplicates deleted, real rows closed.
