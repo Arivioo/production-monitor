@@ -34,6 +34,15 @@ const PRODUCTS = [
   },
 ]
 
+// Crons that live ONLY on prod BY DESIGN — production silent-failure monitors that watch
+// real customer data (auth.users, live Google connections). Running them against staging is
+// pointless and would raise false alarms, so they are deliberately never scheduled there.
+// Keyed by product, matched on jobname (the part before ' ['). ONLY prod-only extras are
+// tolerated — a staging-only cron is NEVER whitelisted here, that is always genuine drift.
+const EXPECTED_PROD_ONLY_CRONS = {
+  ReplyFlow: ['monitor-email-integrity-daily', 'monitor-sync-health-hourly'],
+}
+
 const SCHEMA_SQL = `
   SELECT table_name || '.' || column_name || ':' || data_type AS entry
   FROM information_schema.columns
@@ -109,9 +118,15 @@ for (const { name, patEnv, prod, staging } of PRODUCTS) {
       query(staging, pat, CRON_SQL),
     ])
     const cronDiff = diffSets(pCron.map((r) => r.entry), sCron.map((r) => r.entry))
-    if (cronDiff.prodOnly.length || cronDiff.stagingOnly.length) {
-      fail(`${name} cron jobs differ — prod-only: [${cronDiff.prodOnly.join('; ')}], staging-only: [${cronDiff.stagingOnly.join('; ')}]`)
-    } else ok(`${name} cron jobs in parity (${pCron.length})`)
+    const allowProdOnly = EXPECTED_PROD_ONLY_CRONS[name] ?? []
+    const jobOf = (entry) => entry.split(' [')[0]
+    const expectedProdOnly = cronDiff.prodOnly.filter((e) => allowProdOnly.includes(jobOf(e)))
+    const unexpectedProdOnly = cronDiff.prodOnly.filter((e) => !allowProdOnly.includes(jobOf(e)))
+    if (unexpectedProdOnly.length || cronDiff.stagingOnly.length) {
+      fail(`${name} cron jobs differ — prod-only: [${unexpectedProdOnly.join('; ')}], staging-only: [${cronDiff.stagingOnly.join('; ')}]`)
+    } else {
+      ok(`${name} cron jobs in parity (${sCron.length} shared${expectedProdOnly.length ? `, +${expectedProdOnly.length} expected prod-only monitor: ${expectedProdOnly.map(jobOf).join(', ')}` : ''})`)
+    }
 
     for (const [env, rows] of [['PROD', pCron], ['STAGING', sCron]]) {
       for (const row of rows) {
