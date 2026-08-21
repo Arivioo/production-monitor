@@ -23,7 +23,7 @@
  *     reads each repo's working copy directly, zero auth.
  */
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { join } from 'node:path'
 import { getFleet } from '../lib/fleet.mjs'
@@ -139,6 +139,9 @@ for (const p of FLEET) {
 
 console.log('')
 if (failures.length) {
+  // Machine-readable payload so send-drift-alert.mjs renders the real findings,
+  // not the Playwright-shaped "no report produced" fallback of send-alert.mjs.
+  writeFileSync('pipeline-drift-results.json', JSON.stringify(failures, null, 2))
   console.error(`PIPELINE DRIFT DETECTED (${failures.length} finding(s)) — a deploy.yml has regressed from the hardened standard (standards/deploy-standard.md).`)
   process.exitCode = 1
 } else {

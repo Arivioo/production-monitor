@@ -13,6 +13,8 @@
  * Read-only. Exits 1 on any drift — the workflow failure IS the alert.
  */
 
+import { writeFileSync } from 'node:fs'
+
 const PRODUCTS = [
   {
     name: 'ReplyFlow',
@@ -142,6 +144,9 @@ for (const { name, patEnv, prod, staging } of PRODUCTS) {
 
 console.log('')
 if (failures.length) {
+  // Machine-readable payload so send-drift-alert.mjs renders the real findings,
+  // not the Playwright-shaped "no report produced" fallback of send-alert.mjs.
+  writeFileSync('drift-results.json', JSON.stringify(failures, null, 2))
   console.error(`DRIFT DETECTED (${failures.length} finding(s)) — staging is not a truthful rehearsal of prod until resolved.`)
   process.exitCode = 1
 } else {

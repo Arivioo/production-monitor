@@ -56,12 +56,16 @@ jobs:
           BACKOFFICE_SUPABASE_URL: ${{ secrets.BACKOFFICE_SUPABASE_URL }}
           BACKOFFICE_SERVICE_ROLE_KEY: ${{ secrets.BACKOFFICE_SERVICE_ROLE_KEY }}
 
+      # Drift-specific sender: renders the real drift findings (drift-results.json /
+      # pipeline-drift-results.json) instead of send-alert.mjs's Playwright "no report
+      # produced" fallback, which fired because this job never runs Playwright.
       - name: Send alert on failure
         if: failure()
-        run: node scripts/send-alert.mjs
+        run: node scripts/send-drift-alert.mjs
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: '465'
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           ALERT_EMAIL: rogmueller1976@gmail.com
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
